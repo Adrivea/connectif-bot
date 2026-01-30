@@ -126,6 +126,22 @@ header {visibility: hidden;}
     padding: 2rem 1.5rem;
 }
 
+/* Forzar max-width en el contenedor de Streamlit */
+.block-container {
+    max-width: 900px !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+}
+
+/* Asegurar que el contenido esté centrado */
+.stApp > div {
+    max-width: 100%;
+}
+
+section[data-testid="stSidebar"] {
+    background-color: #ffffff;
+}
+
 /* Header premium con logo, título y subtítulo */
 .app-header {
     text-align: center;
@@ -523,36 +539,58 @@ def _merge_article_chunks(texts):
 
 def buscar(query, vectorizer, tfidf_matrix, chunks):
     """Busca en el indice y devuelve resultados agrupados por articulo."""
-    query_vec = vectorizer.transform([query])
-    scores = cosine_similarity(query_vec, tfidf_matrix).flatten()
-    ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
+    # Validar inputs
+    if not query or not query.strip():
+        return []
+    
+    if vectorizer is None or tfidf_matrix is None or chunks is None:
+        raise ValueError("El índice no está cargado correctamente")
+    
+    try:
+        query_vec = vectorizer.transform([query])
+        scores = cosine_similarity(query_vec, tfidf_matrix).flatten()
+        ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
+    except Exception as e:
+        raise ValueError(f"Error al procesar la consulta: {str(e)}")
 
     top_chunks = []
-    for idx, score in ranked:
-        if score < SCORE_THRESHOLD:
-            break
-        if len(top_chunks) >= 50:
-            break
-        chunk = chunks[idx]
-        if len(chunk["text"].strip()) < 50:
-            continue
-        top_chunks.append((idx, score, chunk))
+    try:
+        for idx, score in ranked:
+            if score < SCORE_THRESHOLD:
+                break
+            if len(top_chunks) >= 50:
+                break
+            if idx >= len(chunks):
+                continue
+            chunk = chunks[idx]
+            if not isinstance(chunk, dict) or "text" not in chunk:
+                continue
+            if len(chunk["text"].strip()) < 50:
+                continue
+            top_chunks.append((idx, score, chunk))
+    except (IndexError, KeyError, TypeError) as e:
+        raise ValueError(f"Error al procesar los chunks: {str(e)}")
 
     # Agrupar por articulo, hasta 3 chunks por articulo
     articles = {}
-    for idx, score, chunk in top_chunks:
-        url = chunk["url"]
-        if url not in articles:
-            articles[url] = {
-                "title": chunk["title"],
-                "url": url,
-                "best_score": score,
-                "chunk_list": [],
-            }
-        if score > articles[url]["best_score"]:
-            articles[url]["best_score"] = score
-        if len(articles[url]["chunk_list"]) < 3:
-            articles[url]["chunk_list"].append((idx, chunk["text"]))
+    try:
+        for idx, score, chunk in top_chunks:
+            if not isinstance(chunk, dict) or "url" not in chunk or "title" not in chunk:
+                continue
+            url = chunk["url"]
+            if url not in articles:
+                articles[url] = {
+                    "title": chunk.get("title", "Sin título"),
+                    "url": url,
+                    "best_score": score,
+                    "chunk_list": [],
+                }
+            if score > articles[url]["best_score"]:
+                articles[url]["best_score"] = score
+            if len(articles[url]["chunk_list"]) < 3:
+                articles[url]["chunk_list"].append((idx, chunk.get("text", "")))
+    except Exception as e:
+        raise ValueError(f"Error al agrupar resultados: {str(e)}")
 
     sorted_articles = sorted(
         articles.values(), key=lambda a: a["best_score"], reverse=True
@@ -787,8 +825,20 @@ def _md_to_html(md_text):
 
 def _mostrar_respuesta(query, vectorizer, tfidf_matrix, chunks, show_diagnostic=False):
     """Flujo: buscar (RAG) -> GPT redacta respuesta -> mostrar."""
-    # Buscar en docs
-    results = buscar(query, vectorizer, tfidf_matrix, chunks)
+    # Buscar en docs con manejo de errores
+    try:
+        results = buscar(query, vectorizer, tfidf_matrix, chunks)
+    except Exception as e:
+        st.error(f"Error al buscar en la documentación: {str(e)}")
+        st.markdown(
+            '<div class="no-results-card">'
+            "<h4>Error en la búsqueda.</h4>"
+            "<p>Ocurrió un error al buscar en la documentación. Por favor, intenta de nuevo o contacta a "
+            '<a href="https://support.connectif.ai/hc/es/requests/new" target="_blank">'
+            "nuestra mesa de ayuda</a>.</p></div>",
+            unsafe_allow_html=True,
+        )
+        return
 
     # Si NO hay resultados
     if not results:
@@ -914,17 +964,18 @@ def main():
     st.markdown(PREMIUM_CSS, unsafe_allow_html=True)
 
     # Contenedor principal centrado
-    with st.container():
-        # Header premium con logo (si existe), título y subtítulo
-        header_html = '<div class="app-header">'
-        if SHOW_LOGO:
-            header_html += f'<div class="logo-container"><img src="data:image/png;base64,{_get_logo_base64()}" alt="Connectif Logo"></div>'
-        header_html += (
-            '<h1>Guia inteligente de Connectif</h1>'
-            '<p>Asistente de consulta con IA, basado en la documentacion oficial de Connectif.</p>'
-            '</div>'
-        )
-        st.markdown(header_html, unsafe_allow_html=True)
+    st.markdown('<div class="main-container">', unsafe_allow_html=True)
+    
+    # Header premium con logo (si existe), título y subtítulo
+    header_html = '<div class="app-header">'
+    if SHOW_LOGO:
+        header_html += f'<div class="logo-container"><img src="data:image/png;base64,{_get_logo_base64()}" alt="Connectif Logo"></div>'
+    header_html += (
+        '<h1>Guia inteligente de Connectif</h1>'
+        '<p>Asistente de consulta con IA, basado en la documentacion oficial de Connectif.</p>'
+        '</div>'
+    )
+    st.markdown(header_html, unsafe_allow_html=True)
 
     # Cargar índice
     try:
@@ -938,8 +989,7 @@ def main():
         st.session_state.faq_clicked = None
 
     # Card central para input
-    with st.container():
-        st.markdown('<div class="input-card">', unsafe_allow_html=True)
+    st.markdown('<div class="input-card">', unsafe_allow_html=True)
         
         # Formulario de pregunta
         with st.form("ask", clear_on_submit=False):
@@ -992,6 +1042,9 @@ def main():
     # Mostrar respuesta si hay query activa
     if active_query:
         _mostrar_respuesta(active_query, vectorizer, tfidf_matrix, chunks, show_diagnostic)
+    
+    # Cerrar contenedor principal
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
