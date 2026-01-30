@@ -333,161 +333,79 @@ def _summarize_lines(lines, max_lines=12):
 # ---------------------------------------------------------------------------
 
 def build_response_md(query, results):
-    """Genera markdown de la respuesta (sin fuentes ni mesa de ayuda, esos se renderizan aparte)."""
+    """Genera markdown limpio con secciones: Resumen, Pasos, Checklist, Relacionado.
+
+    - Usa solo el articulo principal para los pasos.
+    - Articulos secundarios se listan en "Relacionado".
+    - No duplica contenido.
+    """
     intent = detect_intent(query)
-    all_fragments = [r["text"] for r in results]
-    unique_lines = _deduplicate_sentences(all_fragments)
-    summarized = _summarize_lines(unique_lines)
-    titles = list(dict.fromkeys(r["title"] for r in results))
+
+    # Separar articulo principal vs relacionados
+    main_result = results[0]
+    related = results[1:]
+
+    # Deduplicar lineas del articulo principal
+    main_lines = _deduplicate_sentences([main_result["text"]])
+    main_lines = _summarize_lines(main_lines, max_lines=10)
 
     parts = []
 
-    # Titulo
-    parts.append(f"### {query.strip().rstrip('?')}?\n")
-
-    # Explicacion
+    # --- Resumen ---
+    parts.append("#### Resumen\n")
     if intent == "how":
         parts.append(
-            f"En la documentacion de Connectif encontre informacion relevante "
-            f"sobre este tema, principalmente en: **{titles[0]}**."
+            f"En la documentacion de Connectif, el articulo "
+            f"**{main_result['title']}** explica como realizar este proceso."
         )
-        if len(titles) > 1:
-            otros = ", ".join(f"*{t}*" for t in titles[1:3])
-            parts.append(f"Tambien hay informacion relacionada en: {otros}.")
-        parts.append("")
-        parts.append("A continuacion te explico los puntos clave:\n")
     elif intent == "what":
         parts.append(
-            f"Segun la documentacion oficial de Connectif, "
-            f"este tema se cubre en el articulo **{titles[0]}**."
+            f"Segun la documentacion oficial, este tema se cubre en "
+            f"**{main_result['title']}**."
         )
-        parts.append("")
-        parts.append("Aqui tienes un resumen de lo mas importante:\n")
     elif intent == "error":
         parts.append(
-            "Entiendo que estas teniendo un problema. "
-            "Revise la documentacion y encontre los siguientes puntos "
-            "que pueden ayudarte a diagnosticarlo:"
+            "Encontre informacion que puede ayudarte a diagnosticar este problema "
+            f"en el articulo **{main_result['title']}**."
         )
-        parts.append("")
     else:
         parts.append(
-            "Encontre informacion relevante sobre tu consulta "
-            "en la documentacion de Connectif."
+            f"Encontre informacion relevante en el articulo "
+            f"**{main_result['title']}**."
         )
-        if titles:
-            parts.append(
-                f"Los articulos mas relacionados son: **{titles[0]}**"
-                + (f" y *{titles[1]}*." if len(titles) > 1 else ".")
-            )
-        parts.append("")
+    parts.append("")
 
-    # Contenido principal
-    if intent == "how" and summarized:
-        parts.append("#### Pasos para hacerlo:\n")
-        for i, line in enumerate(summarized[:8], 1):
+    # --- Pasos / Contenido principal ---
+    if intent == "how":
+        parts.append("#### Pasos\n")
+        for i, line in enumerate(main_lines[:8], 1):
             parts.append(f"{i}. {line}")
         parts.append("")
-    elif intent == "what" and summarized:
-        for line in summarized[:6]:
+    elif intent == "error":
+        parts.append("#### Checklist de diagnostico\n")
+        for line in main_lines[:8]:
             parts.append(f"- {line}")
-        parts.append("")
-    elif intent == "error" and summarized:
-        parts.append("#### Checklist de diagnostico:\n")
-        for line in summarized[:8]:
-            parts.append(f"- [ ] {line}")
         parts.append("")
     else:
-        for line in summarized[:8]:
+        for line in main_lines[:8]:
             parts.append(f"- {line}")
         parts.append("")
 
-    # Que tener en cuenta
-    if len(summarized) > 8:
-        parts.append("#### Que debes tener en cuenta:\n")
-        for line in summarized[8:12]:
+    # --- Que tener en cuenta ---
+    if len(main_lines) > 8:
+        parts.append("#### Que debes tener en cuenta\n")
+        for line in main_lines[8:]:
             parts.append(f"- {line}")
         parts.append("")
 
-    # Checklist rapido (solo how)
-    if intent == "how" and titles:
-        parts.append("#### Checklist rapido:\n")
-        for t in titles[:3]:
-            parts.append(f"- [ ] Revisa el articulo: {t}")
-        parts.append("- [ ] Verifica que los cambios se guardaron correctamente")
-        parts.append("- [ ] Prueba el resultado en tu cuenta de Connectif")
+    # --- Relacionado (articulos secundarios, NO mezclados con pasos) ---
+    if related:
+        parts.append("#### Relacionado\n")
+        for r in related[:4]:
+            parts.append(f"- **{r['title']}**: {r['url']}")
         parts.append("")
 
     return "\n".join(parts)
-
-# ---------------------------------------------------------------------------
-# Formateo visual de respuesta
-# ---------------------------------------------------------------------------
-
-_RE_SUB_STEP = re.compile(r"^\s*(\d+\.\d+)\.?\s+(.+)$")
-_RE_MAIN_STEP = re.compile(r"^\s*(\d+)\.\s+(.+)$")
-_RE_BULLET = re.compile(r"^\s*[-*\u2022]\s+(.+)$")
-_RE_CHECKBOX = re.compile(r"^\s*-\s*\[\s*\]\s+(.+)$")
-_RE_HEADING = re.compile(
-    r"^(#{1,4}\s+)?(Pasos para hacerlo|Checklist de diagnostico|Checklist rapido"
-    r"|Que debes tener en cuenta|Requisitos|Notas|Importante):?\s*$",
-    re.I,
-)
-
-# Longitud maxima para considerar una linea como "item de lista".
-# Lineas mas largas que empiecen con "1." probablemente son parrafos
-# donde el numero es incidental — se dejan como texto normal.
-_MAX_STEP_LEN = 200
-
-
-def format_answer(text):
-    """Transforma el markdown de la respuesta para mejorar el formato visual.
-
-    Reglas:
-    - Solo convierte lineas que empiezan con numeracion/vineta real.
-    - No toca parrafos largos aunque contengan "1." al inicio.
-    - Cada item se emite como linea markdown separada con salto explicito.
-    - Sub-items (1.1, 1.2) se indentan como sublista.
-    """
-    output = []
-    for line in text.splitlines():
-        stripped = line.strip()
-
-        # Linea vacia: preservar salto
-        if not stripped:
-            output.append("")
-            continue
-
-        # Encabezado de seccion
-        m_heading = _RE_HEADING.match(stripped)
-        if m_heading:
-            output.append("")
-            output.append(f"**{m_heading.group(2)}:**")
-            output.append("")
-            continue
-
-        # Checkbox (- [ ] texto)
-        m_check = _RE_CHECKBOX.match(stripped)
-        if m_check:
-            output.append(f"- ✅ {m_check.group(1)}")
-            continue
-
-        # Sub-paso (1.1, 1.2, ...) — comprobar antes que paso principal
-        m_sub = _RE_SUB_STEP.match(stripped)
-        if m_sub and len(m_sub.group(2)) < _MAX_STEP_LEN:
-            output.append(f"  - 🔸 {m_sub.group(2)}")
-            continue
-
-        # Paso principal (1., 2., ...)
-        m_main = _RE_MAIN_STEP.match(stripped)
-        if m_main and len(m_main.group(2)) < _MAX_STEP_LEN:
-            output.append(f"- ✅ {m_main.group(2)}")
-            continue
-
-        # Linea normal — no tocar
-        output.append(line)
-
-    return "\n".join(output)
 
 # ---------------------------------------------------------------------------
 # Renderizado HTML
@@ -505,9 +423,8 @@ def render_user_bubble(query):
 
 
 def render_bot_bubble(md_content):
-    formatted = format_answer(md_content)
     st.markdown(
-        f'<div class="bubble-bot">\n\n{formatted}\n\n</div>',
+        f'<div class="bubble-bot">\n\n{md_content}\n\n</div>',
         unsafe_allow_html=True,
     )
 
@@ -528,11 +445,21 @@ def render_source_chips(results):
 
 
 def render_help_desk():
+    """Muestra mesa de ayuda solo si hay al menos un canal configurado."""
+    has_email = bool(HELP_EMAIL)
+    has_whatsapp = bool(HELP_WHATSAPP)
+    if not has_email and not has_whatsapp:
+        return
     lines = []
-    if HELP_EMAIL:
-        lines.append(f"<p>Email: <strong>{_html_escape(HELP_EMAIL)}</strong></p>")
-    if HELP_WHATSAPP:
-        lines.append(f"<p>WhatsApp: <strong>{_html_escape(HELP_WHATSAPP)}</strong></p>")
+    if has_email:
+        lines.append(
+            f"<p>Si necesitas ayuda, escribe a: "
+            f"<strong>{_html_escape(HELP_EMAIL)}</strong></p>"
+        )
+    if has_whatsapp:
+        lines.append(
+            f"<p>WhatsApp: <strong>{_html_escape(HELP_WHATSAPP)}</strong></p>"
+        )
     lines.append(
         f'<p><a href="{HELP_FORM}" target="_blank">'
         f"Enviar solicitud al soporte de Connectif</a></p>"
@@ -541,7 +468,6 @@ def render_help_desk():
     st.markdown(
         f'<div class="help-desk-card">'
         f"<h4>Mesa de ayuda</h4>"
-        f"<p>Si necesitas mas ayuda, contacta al equipo de soporte:</p>"
         f"{body}</div>",
         unsafe_allow_html=True,
     )
@@ -565,41 +491,48 @@ def render_no_results(query):
 # ---------------------------------------------------------------------------
 
 def _run_search_and_render(query, vectorizer, tfidf_matrix, chunks, diag):
-    """Ejecuta la busqueda y renderiza la respuesta completa."""
+    """Ejecuta la busqueda y renderiza la respuesta UNA sola vez."""
     render_user_bubble(query)
     results = search(query, vectorizer, tfidf_matrix, chunks)
 
-    if results:
-        response_md = build_response_md(query, results)
-        render_bot_bubble(response_md)
-
-        st.markdown(
-            '<p style="font-size:0.85rem;color:#374151;margin-top:0.75rem;">'
-            "<strong>Fuentes:</strong></p>",
-            unsafe_allow_html=True,
-        )
-        render_source_chips(results)
-
-        best_score = results[0]["score"] if results else 0
-        intent = detect_intent(query)
-        if best_score < 0.25 or intent == "error":
-            render_help_desk()
-
-        with st.expander("Copiar respuesta"):
-            st.code(response_md, language="markdown")
-
-        if diag:
-            st.markdown(
-                '<p class="diag-label"><strong>Modo diagnostico — Fragments / Scores:</strong></p>',
-                unsafe_allow_html=True,
-            )
-            for r in results:
-                st.markdown(f"- `{r['score']:.4f}` — **{r['title']}**")
-                with st.expander(f"Fragment: {r['title'][:50]}"):
-                    st.text(r["text"])
-    else:
+    if not results:
         render_no_results(query)
         render_help_desk()
+        return
+
+    # --- Respuesta unica ---
+    response_md = build_response_md(query, results)
+    render_bot_bubble(response_md)
+
+    # --- Fuentes (siempre, max 5) ---
+    st.markdown(
+        '<p style="font-size:0.85rem;color:#374151;margin-top:0.75rem;">'
+        "<strong>Fuentes:</strong></p>",
+        unsafe_allow_html=True,
+    )
+    render_source_chips(results)
+
+    # --- Mesa de ayuda (solo si evidencia debil o error, y hay canales) ---
+    best_score = results[0]["score"]
+    intent = detect_intent(query)
+    if best_score < 0.25 or intent == "error":
+        render_help_desk()
+
+    # --- Copiar ---
+    with st.expander("Copiar respuesta"):
+        st.code(response_md, language="markdown")
+
+    # --- Diagnostico: fragments y scores solo aqui ---
+    if diag:
+        st.markdown(
+            '<p class="diag-label">'
+            "<strong>Modo diagnostico — Fragments / Scores:</strong></p>",
+            unsafe_allow_html=True,
+        )
+        for r in results:
+            st.markdown(f"- `{r['score']:.4f}` — **{r['title']}**")
+            with st.expander(f"Fragment: {r['title'][:50]}"):
+                st.text(r["text"])
 
 
 def main():
