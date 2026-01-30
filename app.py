@@ -205,8 +205,34 @@ CUSTOM_CSS = """
     color: #6B7280;
     margin-top: 0.25rem;
 }
+
+/* ---- FAQ section ---- */
+.faq-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 0.5rem;
+}
 </style>
 """
+
+# ---------------------------------------------------------------------------
+# Preguntas frecuentes
+# ---------------------------------------------------------------------------
+
+FAQ_QUESTIONS = [
+    "Como instalar Connectif en mi web?",
+    "Como integrar Connectif con Shopify?",
+    "Como integrar Connectif con Tiendanube?",
+    "Como integrar Connectif con BigCommerce?",
+    "Como saber si Connectif esta bien instalado?",
+    "Como importar contactos a Connectif?",
+    "Como crear un segmento?",
+    "Que es un workflow y como se crea?",
+    "Como crear una campana de email?",
+    "Como funcionan las recomendaciones personalizadas?",
+    "Que es el analisis RFM en Connectif?",
+]
 
 # ---------------------------------------------------------------------------
 # Cargar indice (cacheado por Streamlit)
@@ -475,6 +501,10 @@ def main():
         layout="centered",
     )
 
+    # Inicializar session_state
+    if "faq_query" not in st.session_state:
+        st.session_state.faq_query = ""
+
     # CSS global
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
@@ -497,6 +527,22 @@ def main():
         )
         return
 
+    # --- Preguntas frecuentes ---
+    st.markdown(
+        '<p class="faq-title">Preguntas frecuentes</p>',
+        unsafe_allow_html=True,
+    )
+    # Dos columnas
+    faq_left = FAQ_QUESTIONS[: (len(FAQ_QUESTIONS) + 1) // 2]
+    faq_right = FAQ_QUESTIONS[(len(FAQ_QUESTIONS) + 1) // 2:]
+    col1, col2 = st.columns(2)
+    for q in faq_left:
+        if col1.button(q, key=f"faq_{q}", use_container_width=True):
+            st.session_state.faq_query = q
+    for q in faq_right:
+        if col2.button(q, key=f"faq_{q}", use_container_width=True):
+            st.session_state.faq_query = q
+
     # Controles: toggle diagnostico
     diag = st.toggle("Modo diagnostico", value=False)
 
@@ -505,11 +551,16 @@ def main():
     with st.form("ask", clear_on_submit=False):
         query = st.text_input(
             "Escribe tu pregunta:",
+            value=st.session_state.faq_query,
             placeholder="Ej: Como crear un workflow de carrito abandonado?",
             label_visibility="collapsed",
         )
         submitted = st.form_submit_button("Preguntar", use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
+
+    # Limpiar faq_query despues de usarla para evitar persistencia
+    if st.session_state.faq_query:
+        st.session_state.faq_query = ""
 
     if not submitted or not query.strip():
         return
@@ -556,7 +607,6 @@ def main():
                 with st.expander(f"Fragment: {r['title'][:50]}"):
                     st.text(r["text"])
     else:
-        render_user_bubble(query)
         render_no_results(query)
         render_help_desk()
 
