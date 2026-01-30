@@ -527,6 +527,21 @@ def main():
         )
         return
 
+    # Controles: toggle diagnostico
+    diag = st.toggle("Modo diagnostico", value=False)
+
+    # Card de pregunta
+    st.markdown('<div class="question-card">', unsafe_allow_html=True)
+    with st.form("ask", clear_on_submit=False):
+        query = st.text_input(
+            "Escribe tu pregunta:",
+            value=st.session_state.faq_query,
+            placeholder="Ej: Como crear un workflow de carrito abandonado?",
+            label_visibility="collapsed",
+        )
+        submitted = st.form_submit_button("Preguntar", use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
     # --- Preguntas frecuentes ---
     st.markdown(
         '<p class="faq-title">Preguntas frecuentes</p>',
@@ -542,21 +557,6 @@ def main():
     for q in faq_right:
         if col2.button(q, key=f"faq_{q}", use_container_width=True):
             st.session_state.faq_query = q
-
-    # Controles: toggle diagnostico
-    diag = st.toggle("Modo diagnostico", value=False)
-
-    # Card de pregunta
-    st.markdown('<div class="question-card">', unsafe_allow_html=True)
-    with st.form("ask", clear_on_submit=False):
-        query = st.text_input(
-            "Escribe tu pregunta:",
-            value=st.session_state.faq_query,
-            placeholder="Ej: Como crear un workflow de carrito abandonado?",
-            label_visibility="collapsed",
-        )
-        submitted = st.form_submit_button("Preguntar", use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
     # Limpiar faq_query despues de usarla para evitar persistencia
     if st.session_state.faq_query:
