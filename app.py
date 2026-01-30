@@ -160,30 +160,31 @@ div[data-testid="stForm"] {
     margin: 0 !important;
 }
 
-/* Header premium con logo en esquina superior derecha */
+/* Header premium con logo centrado en la parte superior */
 .app-header {
-    position: relative;
     text-align: center;
-    padding: 2.5rem 0 2rem 0;
+    padding: 1.5rem 0 2rem 0;
     margin-bottom: 2rem;
-    min-height: 80px;
 }
 
 .app-header .logo-container {
-    position: absolute;
-    top: 0;
-    right: 0;
-    z-index: 10;
-    padding: 0.5rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .app-header .logo-container img {
-    max-height: 60px;
-    max-width: 120px;
+    max-height: 80px;
+    max-width: 200px;
     width: auto;
     height: auto;
     display: block;
     object-fit: contain;
+    background: transparent;
+    margin: 0 auto;
+    padding: 0.5rem;
+    border-radius: 8px;
 }
 
 .app-header h1 {
