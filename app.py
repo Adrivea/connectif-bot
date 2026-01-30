@@ -421,6 +421,62 @@ def build_response_md(query, results):
     return "\n".join(parts)
 
 # ---------------------------------------------------------------------------
+# Formateo visual de respuesta
+# ---------------------------------------------------------------------------
+
+_RE_MAIN_STEP = re.compile(r"^(\d+)\.\s+(.+)$")
+_RE_SUB_STEP = re.compile(r"^(\d+\.\d+)\.?\s+(.+)$")
+_RE_HEADING = re.compile(
+    r"^(#{1,4}\s+)?(Pasos para hacerlo|Checklist de diagnostico|Checklist rapido"
+    r"|Que debes tener en cuenta|Requisitos|Notas|Importante):?\s*$",
+    re.I,
+)
+_RE_CHECKBOX = re.compile(r"^- \[ \]\s+(.+)$")
+
+
+def format_answer(text):
+    """Transforma el markdown de la respuesta para mejorar el formato visual.
+
+    - "1. texto" -> checkmark emoji
+    - "1.1 texto" -> sub-bullet emoji
+    - Encabezados de seccion -> negrita
+    - "- [ ] texto" -> checkmark emoji
+    """
+    output = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+
+        # Sub-paso (1.1, 1.2, ...)
+        m_sub = _RE_SUB_STEP.match(stripped)
+        if m_sub:
+            output.append(f"  🔸 {m_sub.group(2)}")
+            continue
+
+        # Paso principal (1., 2., ...)
+        m_main = _RE_MAIN_STEP.match(stripped)
+        if m_main:
+            output.append(f"✅ {m_main.group(2)}")
+            continue
+
+        # Checkbox (- [ ] texto)
+        m_check = _RE_CHECKBOX.match(stripped)
+        if m_check:
+            output.append(f"✅ {m_check.group(1)}")
+            continue
+
+        # Encabezado de seccion
+        m_heading = _RE_HEADING.match(stripped)
+        if m_heading:
+            title = m_heading.group(2)
+            output.append(f"\n**{title}:**")
+            continue
+
+        # Linea normal
+        output.append(line)
+
+    return "\n".join(output)
+
+# ---------------------------------------------------------------------------
 # Renderizado HTML
 # ---------------------------------------------------------------------------
 
@@ -436,8 +492,9 @@ def render_user_bubble(query):
 
 
 def render_bot_bubble(md_content):
+    formatted = format_answer(md_content)
     st.markdown(
-        f'<div class="bubble-bot">\n\n{md_content}\n\n</div>',
+        f'<div class="bubble-bot">\n\n{formatted}\n\n</div>',
         unsafe_allow_html=True,
     )
 
