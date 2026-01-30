@@ -145,12 +145,28 @@ section[data-testid="stSidebar"] {
     background-color: #ffffff;
 }
 
+/* Ocultar el contenedor del formulario que crea Streamlit */
+form[data-testid="stForm"] {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+div[data-testid="stForm"] {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
 /* Header premium con logo en esquina superior derecha */
 .app-header {
     position: relative;
     text-align: center;
     padding: 2.5rem 0 2rem 0;
     margin-bottom: 2rem;
+    min-height: 80px;
 }
 
 .app-header .logo-container {
@@ -158,12 +174,16 @@ section[data-testid="stSidebar"] {
     top: 0;
     right: 0;
     z-index: 10;
+    padding: 0.5rem;
 }
 
 .app-header .logo-container img {
     max-height: 60px;
+    max-width: 120px;
     width: auto;
+    height: auto;
     display: block;
+    object-fit: contain;
 }
 
 .app-header h1 {
@@ -1062,6 +1082,10 @@ def main():
         st.session_state.faq_clicked = None  # Resetear después de usar
     elif submitted and query.strip():
         active_query = query.strip()
+
+    # Mostrar FAQ debajo del input si NO hay respuesta activa
+    if not active_query:
+        _mostrar_faq()
 
     # Mostrar respuesta si hay query activa
     if active_query:
