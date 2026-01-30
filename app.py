@@ -990,23 +990,23 @@ def main():
 
     # Card central para input
     st.markdown('<div class="input-card">', unsafe_allow_html=True)
+    
+    # Formulario de pregunta
+    with st.form("ask", clear_on_submit=False):
+        # Si hay una pregunta del FAQ, usarla como valor inicial
+        initial_value = st.session_state.faq_clicked if st.session_state.faq_clicked else ""
         
-        # Formulario de pregunta
-        with st.form("ask", clear_on_submit=False):
-            # Si hay una pregunta del FAQ, usarla como valor inicial
-            initial_value = st.session_state.faq_clicked if st.session_state.faq_clicked else ""
-            
-            query = st.text_input(
-                "Escribe tu pregunta:",
-                value=initial_value,
-                placeholder="Ej: Como crear un workflow de carrito abandonado?",
-                label_visibility="collapsed",
-                key="query_input_field"
-            )
-            
-            submitted = st.form_submit_button("Preguntar", use_container_width=True)
+        query = st.text_input(
+            "Escribe tu pregunta:",
+            value=initial_value,
+            placeholder="Ej: Como crear un workflow de carrito abandonado?",
+            label_visibility="collapsed",
+            key="query_input_field"
+        )
+        
+        submitted = st.form_submit_button("Preguntar", use_container_width=True)
 
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # Sección FAQ con chips en grid
     st.markdown('<div class="faq-section">', unsafe_allow_html=True)
