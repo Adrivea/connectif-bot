@@ -39,8 +39,20 @@ def clean_text(text):
     return text.strip()
 
 
+def _find_sentence_break(text, target, window=100):
+    """Busca el corte de oracion mas cercano a 'target' dentro de una ventana."""
+    best = target
+    # Buscar hacia atras desde target
+    search_start = max(0, target - window)
+    for i in range(target, search_start, -1):
+        if i < len(text) and text[i - 1] in ".!?\n" and (i >= len(text) or text[i] in " \n\t\r"):
+            best = i
+            break
+    return best
+
+
 def chunk_text(text, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
-    """Divide texto en chunks de ~size caracteres con overlap."""
+    """Divide texto en chunks respetando limites de oraciones."""
     if len(text) <= size:
         return [text]
 
@@ -48,9 +60,21 @@ def chunk_text(text, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
     start = 0
     while start < len(text):
         end = start + size
-        chunk = text[start:end]
-        chunks.append(chunk.strip())
-        start = end - overlap
+        if end >= len(text):
+            chunk = text[start:]
+        else:
+            # Buscar el punto de corte mas cercano a una oracion completa
+            end = _find_sentence_break(text, end)
+            if end <= start:
+                # Si no encontro corte, usar el limite original
+                end = start + size
+            chunk = text[start:end]
+        stripped = chunk.strip()
+        if stripped:
+            chunks.append(stripped)
+        if end >= len(text):
+            break
+        start = max(start + 1, end - overlap)
 
     return [c for c in chunks if c]
 

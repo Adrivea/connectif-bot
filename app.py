@@ -17,24 +17,62 @@ from sklearn.metrics.pairwise import cosine_similarity
 # ---------------------------------------------------------------------------
 
 SYSTEM_PROMPT = """
-Eres el "Asistente Connectif (Docs)", un asistente de ayuda para clientes que
-responde EXCLUSIVAMENTE usando la documentacion oficial publica de Connectif.
+Eres "Guia Inteligente de Connectif", un asistente de soporte que responde en espanol usando UNICAMENTE la documentacion oficial de Connectif que el sistema te entrega como CONTEXTO (extractos/fragmentos).
 
-REGLAS OBLIGATORIAS:
-1. NUNCA copies ni pegues texto literal largo de la documentacion.
-2. SIEMPRE debes LEER la informacion encontrada y REDACTAR una respuesta clara,
-   humana y explicativa.
-3. Si varios fragmentos dicen lo mismo, FUSIONA la informacion y ELIMINA
-   repeticiones.
-4. NO muestres bloques de texto crudo ni fragmentos duplicados.
-5. NO inventes informacion.
-6. Si no hay suficiente evidencia documental, responde:
-   "No encontre esta informacion en la documentacion oficial de Connectif".
-7. Usa un tono humano, cercano y orientado a clientes.
-8. Explica paso a paso cuando aplique.
-9. Usa listas, numeracion y subtitulos para facilitar la lectura.
-10. Al FINAL muestra una seccion "Fuentes" con enlaces (min 1, max 5).
-11. Si la pregunta no puede resolverse completamente, incluye "Mesa de ayuda".
+REGLAS DE ORO (OBLIGATORIAS)
+1) NO inventes. NO asumas. NO uses conocimiento externo. Si algo no esta en el contexto, dilo con claridad.
+2) Responde SIEMPRE con una explicacion util basada en el contexto. No redirijas a "consulta la guia" como respuesta principal.
+3) NO dupliques contenido. Genera una sola respuesta final.
+4) Formato limpio: nada de bloques repetidos, nada de listas pegadas, nada de emojis repetidos por todo el texto.
+5) SIEMPRE incluye una seccion final llamada "Fuentes" con 1 a 5 enlaces (URLs) relevantes tomados del contexto.
+6) Si la informacion del contexto es insuficiente o ambigua, incluye al final una seccion "Mesa de ayuda" con el email o WhatsApp configurado por el sistema, indicando que pueden ayudar con el caso.
+
+ESTILO Y TONO
+- Humano, claro, paciente, orientado a cliente.
+- Explica como si la persona no fuera tecnica.
+- Prioriza pasos accionables y definiciones simples.
+- Usa frases cortas y estructura con subtitulos.
+- No uses jerga innecesaria.
+
+FORMATO DE SALIDA (ESTRUCTURA FIJA)
+1) Titulo en cursiva con la pregunta del usuario:
+   *<pregunta del usuario>*
+
+2) "Respuesta"
+   - Explica la idea principal en 2-5 lineas, directamente basada en el contexto.
+
+3) "Como hacerlo" (SOLO si el contexto describe pasos o procedimiento)
+   - Lista numerada 1., 2., 3... con pasos completos y ordenados.
+   - Cada paso debe ser una accion concreta.
+   - Si el contexto tiene requisitos previos, ponlos antes como "Antes de empezar".
+
+4) "Notas importantes" (SOLO si el contexto menciona advertencias, limites, permisos, requisitos, compatibilidades)
+   - Bullets cortos.
+
+5) "Fuentes"
+   - Lista con 1 a 5 links. Cada link en una linea.
+   - No mas de 5.
+   - No inventes URLs: solo las del contexto.
+
+6) "Mesa de ayuda" (CONDICIONAL)
+   Incluyela SOLO si:
+   - el contexto no permite responder bien, o
+   - hay multiples interpretaciones, o
+   - el usuario necesita un dato que no esta en el contexto (p.ej. configuracion especifica de su cuenta).
+   Debe decir:
+   "Si necesitas que revisemos tu caso exacto, escribe a: <email> o WhatsApp: <whatsapp>"
+
+MANEJO DE CONTEXTO
+- Usa el contexto como fuente. Si el contexto contiene fragmentos irrelevantes, ignoralos.
+- Si el contexto trae varias guias, elige la mas relevante y usa las otras como "Relacionado" SOLO si aportan (maximo 3 referencias, sin inflar la respuesta).
+- Nunca pegues texto largo literal de la guia. Parafrasea y resume sin omitir informacion importante.
+
+CHECK DE CALIDAD ANTES DE RESPONDER
+- Estoy respondiendo la pregunta o solo mandando a leer?
+- Estoy usando SOLO lo que esta en el contexto?
+- Inclui "Fuentes" con 1 a 5 URLs?
+- Evite duplicacion y listas raras?
+- Use pasos numerados solo si realmente aplica?
 """.strip()
 
 # ---------------------------------------------------------------------------
@@ -249,28 +287,79 @@ def load_index():
 # Busqueda
 # ---------------------------------------------------------------------------
 
+def _merge_article_chunks(texts):
+    """Une varios chunks del mismo articulo eliminando texto solapado."""
+    if not texts:
+        return ""
+    if len(texts) == 1:
+        return texts[0]
+    merged = texts[0]
+    for i in range(1, len(texts)):
+        next_text = texts[i]
+        # Intentar detectar solapamiento (los chunks tienen ~50 chars de overlap)
+        overlap_window = min(120, len(merged), len(next_text))
+        best_overlap = 0
+        for ol in range(overlap_window, 10, -1):
+            if merged[-ol:] == next_text[:ol]:
+                best_overlap = ol
+                break
+        if best_overlap > 0:
+            merged += next_text[best_overlap:]
+        else:
+            merged += "\n\n" + next_text
+    return merged
+
+
 def search(query, vectorizer, tfidf_matrix, chunks):
     query_vec = vectorizer.transform([query])
     scores = cosine_similarity(query_vec, tfidf_matrix).flatten()
     ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
 
-    results = []
-    seen_urls = set()
+    # Fase 1: recoger los mejores chunks (hasta 50) por encima del umbral
+    top_chunks = []
     for idx, score in ranked:
         if score < SCORE_THRESHOLD:
             break
-        if len(results) >= TOP_K:
+        if len(top_chunks) >= 50:
             break
         chunk = chunks[idx]
-        if chunk["url"] in seen_urls:
+        if len(chunk["text"].strip()) < 50:
             continue
-        seen_urls.add(chunk["url"])
+        top_chunks.append((idx, score, chunk))
+
+    # Fase 2: agrupar por articulo, hasta 3 chunks por articulo
+    article_data = {}
+    for idx, score, chunk in top_chunks:
+        url = chunk["url"]
+        if url not in article_data:
+            article_data[url] = {
+                "title": chunk["title"],
+                "url": url,
+                "best_score": score,
+                "chunk_list": [],
+            }
+        if score > article_data[url]["best_score"]:
+            article_data[url]["best_score"] = score
+        if len(article_data[url]["chunk_list"]) < 3:
+            article_data[url]["chunk_list"].append((idx, chunk["text"]))
+
+    # Fase 3: ordenar articulos por mejor score, tomar top K
+    sorted_articles = sorted(
+        article_data.values(), key=lambda a: a["best_score"], reverse=True
+    )[:TOP_K]
+
+    # Fase 4: para cada articulo, unir chunks en orden de documento
+    results = []
+    for art in sorted_articles:
+        art["chunk_list"].sort(key=lambda c: c[0])
+        merged_text = _merge_article_chunks([text for _, text in art["chunk_list"]])
         results.append({
-            "score": float(score),
-            "title": chunk["title"],
-            "url": chunk["url"],
-            "text": chunk["text"],
+            "score": art["best_score"],
+            "title": art["title"],
+            "url": art["url"],
+            "text": merged_text,
         })
+
     return results
 
 # ---------------------------------------------------------------------------
@@ -307,6 +396,28 @@ _CONTINUATION = re.compile(r"^(en|y|de|para|con|que|a|al|del|la|el|los|las|un|un
 # Patrones que indican pasos REALES en la documentacion
 _REAL_STEP = re.compile(r"^\s*(\d+)\.\s+(.+)$")
 _NAMED_STEP = re.compile(r"^\s*(Paso|PASO|Step)\s+\d+[.:]\s*(.+)$", re.I)
+
+
+def _trim_broken_start(text):
+    """Recorta texto que empieza a mitad de palabra u oracion."""
+    if not text:
+        return text
+    first_char = text[0]
+    # Si empieza con minuscula o caracter acentuado en minuscula -> fragmento roto
+    if first_char.islower() or first_char in "\xe1\xe9\xed\xf3\xfa\xe0\xe8\xec\xf2\xf9\xf1":
+        # Buscar el inicio de la primera oracion completa
+        m = re.search(r"[.!?\n]\s+([A-Z\xc1\xc9\xcd\xd3\xda\xd1])", text)
+        if m:
+            return text[m.end() - 1:]
+        # Si no hay oracion, buscar primer doble salto de linea
+        nl = text.find("\n\n")
+        if nl != -1 and nl < len(text) // 2:
+            return text[nl + 2:]
+        # Si nada funciona, quitar hasta el primer espacio (palabra partida)
+        sp = text.find(" ")
+        if sp != -1 and sp < 30:
+            return text[sp + 1:]
+    return text
 
 
 def _normalize_text(text):
@@ -389,66 +500,125 @@ def _extract_steps_and_prose(lines):
 # Construccion de respuesta
 # ---------------------------------------------------------------------------
 
+def _clean_chunk_for_display(text):
+    """Prepara el texto de un chunk para mostrarlo como respuesta legible."""
+    text = _trim_broken_start(text)
+    text = _normalize_text(text)
+    # Quitar lineas muy cortas que son residuos
+    lines = []
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            if lines and lines[-1] != "":
+                lines.append("")
+            continue
+        if len(stripped) < 15:
+            continue
+        if stripped[0] in (",", ";", ")"):
+            continue
+        lines.append(stripped)
+    result = "\n".join(lines).strip()
+    # Segundo recorte: si despues de limpiar sigue empezando roto
+    result = _trim_broken_start(result)
+    return result
+
+
+def _extract_notes(lines):
+    """Extrae lineas que parecen advertencias, requisitos o notas importantes."""
+    _NOTE_KEYWORDS = re.compile(
+        r"\b(nota|importante|requisito|advertencia|atencion|limite|permiso|"
+        r"compatib|ten en cuenta|recuerda|asegurate|necesitas tener)\b", re.I
+    )
+    notes = []
+    for line in lines:
+        if _NOTE_KEYWORDS.search(line) and len(line) > 20:
+            notes.append(line)
+    return notes
+
+
 def build_response_md(query, results):
-    """Genera markdown con tono humano, parrafos, pasos solo si existen reales."""
+    """Genera markdown siguiendo la estructura del system prompt."""
     main_result = results[0]
     related = results[1:]
 
-    # Limpiar texto principal
-    main_lines = _extract_clean_text(main_result["text"])
+    # Texto principal limpio
+    main_text = _clean_chunk_for_display(main_result["text"])
+    main_lines = [l for l in main_text.split("\n") if l.strip()]
     has_steps = _has_real_steps(main_lines)
 
     parts = []
 
-    # --- Titulo en italica ---
+    # --- 1) Titulo en cursiva ---
     clean_q = query.strip().rstrip("?")
     parts.append(f"*{clean_q}?*\n")
 
-    # --- Explicacion humana ---
-    parts.append(
-        f"Segun la documentacion de Connectif, el articulo "
-        f"**{main_result['title']}** cubre este tema."
-    )
-    if related:
-        extras = ", ".join(f"*{r['title']}*" for r in related[:2])
-        parts.append(f"Tambien encontre informacion relevante en: {extras}.")
-    parts.append("")
-
+    # --- 2) Respuesta: explicacion principal en 2-5 lineas ---
+    parts.append("**Respuesta**\n")
     if has_steps:
         steps, prose = _extract_steps_and_prose(main_lines)
-
-        # Contexto en prosa (max 3 lineas, solo las que son oraciones completas)
-        prose_clean = [p for p in prose if p and len(p) > 30][:3]
-        if prose_clean:
-            for p in prose_clean:
+        # Usar la prosa como explicacion
+        if prose:
+            for p in prose[:5]:
                 parts.append(p)
-            parts.append("")
+        else:
+            parts.append(
+                f"Segun la documentacion de Connectif, el articulo "
+                f"**{main_result['title']}** cubre este tema."
+            )
+    else:
+        # Sin pasos: mostrar el contenido como explicacion
+        if main_text:
+            # Limitar a lineas sustanciales para la seccion "Respuesta"
+            display_lines = [l for l in main_lines if len(l) > 20]
+            for line in display_lines[:8]:
+                parts.append(line)
+        else:
+            parts.append(
+                f"Segun la documentacion de Connectif, el articulo "
+                f"**{main_result['title']}** cubre este tema."
+            )
+    parts.append("")
 
-        # Pasos reales numerados
+    # --- 3) Como hacerlo (SOLO si hay pasos reales) ---
+    if has_steps:
+        steps, _ = _extract_steps_and_prose(main_lines)
         if steps:
-            parts.append("**Pasos:**\n")
-            for i, step in enumerate(steps[:10], 1):
+            parts.append("**Como hacerlo**\n")
+            for i, step in enumerate(steps[:15], 1):
                 parts.append(f"{i}. {step}")
             parts.append("")
-    else:
-        # Sin pasos: contenido como parrafos fluidos
-        content_lines = [l for l in main_lines if l and len(l) > 30][:8]
-        if content_lines:
-            # Primeras lineas como parrafo, resto como bullets
-            first_para = " ".join(content_lines[:2])
-            parts.append(first_para)
-            parts.append("")
-            if len(content_lines) > 2:
-                for line in content_lines[2:]:
-                    parts.append(f"- {line}")
+
+    # --- 4) Notas importantes (SOLO si aplica) ---
+    notes = _extract_notes(main_lines)
+    if notes:
+        parts.append("**Notas importantes**\n")
+        for note in notes[:5]:
+            parts.append(f"- {note}")
+        parts.append("")
+
+    # --- Contenido adicional de articulos secundarios ---
+    if related:
+        shown_extra = False
+        for r in related[:2]:
+            extra_text = _clean_chunk_for_display(r["text"])
+            if extra_text and len(extra_text) > 100:
+                if not shown_extra:
+                    parts.append("---\n")
+                    shown_extra = True
+                parts.append(f"**{r['title']}:**\n")
+                extra_lines = [l for l in extra_text.split("\n") if l.strip()]
+                parts.append("\n".join(extra_lines[:8]))
                 parts.append("")
 
-    # --- Relacionado ---
-    if related:
-        parts.append("**Relacionado:**\n")
-        for r in related[:3]:
+    # --- 5) Fuentes (1-5 links) ---
+    parts.append("**Fuentes**\n")
+    seen_urls = set()
+    all_results = [main_result] + related[:4]
+    for r in all_results:
+        if r["url"] not in seen_urls:
+            seen_urls.add(r["url"])
             parts.append(f"- [{r['title']}]({r['url']})")
-        parts.append("")
+    parts.append("")
 
     return "\n".join(parts)
 
@@ -545,17 +715,9 @@ def _run_search_and_render(query, vectorizer, tfidf_matrix, chunks, diag):
         render_help_desk()
         return
 
-    # --- Respuesta unica ---
+    # --- Respuesta unica (incluye Fuentes al final) ---
     response_md = build_response_md(query, results)
     render_bot_bubble(response_md)
-
-    # --- Fuentes (siempre, max 5) ---
-    st.markdown(
-        '<p style="font-size:0.85rem;color:#374151;margin-top:0.75rem;">'
-        "<strong>Fuentes:</strong></p>",
-        unsafe_allow_html=True,
-    )
-    render_source_chips(results)
 
     # --- Mesa de ayuda (solo si evidencia debil o error, y hay canales) ---
     best_score = results[0]["score"]
