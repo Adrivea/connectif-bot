@@ -68,23 +68,19 @@ No repitas texto literal innecesariamente.
 No agregues informacion que no este en los chunks.
 Ejemplo de tono: "Segun los documentos consultados, se establece que..."
 
-2. Que informacion contiene el RAG (transparencia)
-Incluye un breve apartado explicativo como este:
-"La respuesta se basa en fragmentos extraidos de documentos originales (raw), los cuales contienen informacion relevante para la consulta realizada."
-(No menciones embeddings, vectores ni detalles tecnicos internos.)
+2. **Checklist de acciones para el cliente** (SOLO si esta en los documentos)
+Presenta un checklist claro y accionable, unicamente con acciones que esten explicitamente mencionadas o claramente descritas en los documentos.
+Usa este formato EXACTO con casillas de verificacion:
 
-3. Checklist de acciones para el cliente (SOLO si esta en los documentos)
-Presenta un checklist claro, numerado y accionable, unicamente con acciones que esten explicitamente mencionadas o claramente descritas en los documentos.
-Formato obligatorio:
-Checklist para el cliente:
-1. [Accion concreta]
-2. [Accion concreta]
-3. [Accion concreta]
+**Checklist para el cliente:**
+- [ ] Accion concreta 1
+- [ ] Accion concreta 2
+- [ ] Accion concreta 3
 
 Si los documentos no permiten construir un checklist completo, indica:
 "Los documentos no contienen informacion suficiente para definir un checklist completo de acciones."
 
-4. Fuentes documentales
+3. Fuentes documentales
 Incluye SIEMPRE un apartado de fuentes.
 Formato obligatorio:
 Fuentes:
@@ -196,6 +192,29 @@ CUSTOM_CSS = """
     border: none;
     border-top: 1px solid #E5E7EB;
     margin: 1.2rem 0;
+}
+.contact-footer {
+    max-width: 900px;
+    margin: 0.75rem auto 1.5rem auto;
+    background: #EFF6FF;
+    border: 1px solid #BFDBFE;
+    border-radius: 10px;
+    padding: 1rem 1.5rem;
+    font-size: 0.9rem;
+    color: #1E3A5F;
+    text-align: center;
+    line-height: 1.6;
+}
+.contact-footer strong {
+    color: #1E3A5F;
+}
+.contact-footer a {
+    color: #2563EB;
+    text-decoration: none;
+    font-weight: 600;
+}
+.contact-footer a:hover {
+    text-decoration: underline;
 }
 .no-results-card {
     max-width: 900px;
@@ -488,7 +507,23 @@ def _md_to_html(md_text):
             html_parts.append(f'<h4>{_process_inline(stripped[2:])}</h4>')
             continue
 
-        # Lista desordenada (- o * o checklist)
+        # Checkbox list (- [ ] item)
+        m_checkbox = re.match(r'^[-*]\s*\[[ x]\]\s+(.+)', stripped)
+        if m_checkbox:
+            flush_para()
+            if in_ol:
+                html_parts.append("</ol>")
+                in_ol = False
+            if not in_ul:
+                html_parts.append('<ul style="list-style:none;padding-left:0.5rem;">')
+                in_ul = True
+            html_parts.append(
+                f'<li style="margin-bottom:0.5rem;">'
+                f'\u2610 {_process_inline(m_checkbox.group(1))}</li>'
+            )
+            continue
+
+        # Lista desordenada (- o * o checklist emoji)
         m_ul = re.match(r'^[-*]\s+(.+)', stripped)
         m_check = re.match(r'^[\u2610\u2611\u2612\u2713\u2714\u2716]\s*\d*\.?\s*(.+)', stripped)
         if m_ul or m_check:
@@ -573,6 +608,27 @@ def _mostrar_respuesta(query, vectorizer, tfidf_matrix, chunks):
         '</div>'
     )
     st.markdown(full_html, unsafe_allow_html=True)
+
+    # Footer de contacto
+    contact_parts = []
+    if HELP_EMAIL:
+        contact_parts.append(
+            f'<strong>Email:</strong> <a href="mailto:{HELP_EMAIL}">{HELP_EMAIL}</a>'
+        )
+    if HELP_WHATSAPP:
+        contact_parts.append(
+            f'<strong>WhatsApp:</strong> <a href="https://wa.me/{HELP_WHATSAPP}" target="_blank">{HELP_WHATSAPP}</a>'
+        )
+    contact_line = " &nbsp;|&nbsp; ".join(contact_parts) if contact_parts else ""
+    footer_html = (
+        '<div class="contact-footer">'
+        'Si tienes preguntas adicionales, no dudes en contactar a nuestra '
+        '<strong>mesa de ayuda</strong>.'
+    )
+    if contact_line:
+        footer_html += f'<br>{contact_line}'
+    footer_html += '</div>'
+    st.markdown(footer_html, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Main
