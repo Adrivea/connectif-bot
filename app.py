@@ -1,5 +1,5 @@
 """
-app.py — Asistente Connectif (Docs) — Interfaz web con Streamlit.
+app.py — Guia inteligente de Connectif — Interfaz web con Streamlit.
 
 Reutiliza el indice TF-IDF de data/index/ y presenta respuestas
 en lenguaje natural con tono de agente de soporte.
@@ -7,7 +7,6 @@ en lenguaje natural con tono de agente de soporte.
 
 import os
 import re
-import textwrap
 
 import joblib
 import streamlit as st
@@ -49,6 +48,165 @@ TOP_K = 5
 HELP_EMAIL = os.environ.get("HELP_EMAIL", "")
 HELP_WHATSAPP = os.environ.get("HELP_WHATSAPP", "")
 HELP_FORM = "https://support.connectif.ai/hc/es/requests/new"
+
+# ---------------------------------------------------------------------------
+# CSS embebido
+# ---------------------------------------------------------------------------
+
+CUSTOM_CSS = """
+<style>
+/* ---- Layout general ---- */
+.block-container {
+    max-width: 760px !important;
+    padding-top: 2rem !important;
+}
+
+/* ---- Header ---- */
+.app-header {
+    text-align: center;
+    padding: 1.5rem 0 0.5rem 0;
+}
+.app-header h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 0.25rem;
+}
+.app-header p {
+    font-size: 0.95rem;
+    color: #6B7280;
+    margin: 0;
+}
+
+/* ---- Card contenedora de pregunta ---- */
+.question-card {
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1rem;
+}
+
+/* ---- Chat bubbles ---- */
+.bubble-user {
+    background: #2563EB;
+    color: #FFFFFF;
+    border-radius: 18px 18px 4px 18px;
+    padding: 0.75rem 1.15rem;
+    margin: 0.75rem 0;
+    max-width: 80%;
+    margin-left: auto;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+.bubble-bot {
+    background: #F3F4F6;
+    color: #111827;
+    border: 1px solid #E5E7EB;
+    border-radius: 18px 18px 18px 4px;
+    padding: 1rem 1.25rem;
+    margin: 0.75rem 0;
+    max-width: 95%;
+    font-size: 0.93rem;
+    line-height: 1.65;
+}
+.bubble-bot h3 {
+    font-size: 1.05rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.35rem;
+    color: #111827;
+}
+.bubble-bot h4 {
+    font-size: 0.95rem;
+    margin-top: 0.75rem;
+    margin-bottom: 0.25rem;
+    color: #374151;
+}
+.bubble-bot ul, .bubble-bot ol {
+    padding-left: 1.25rem;
+    margin: 0.35rem 0;
+}
+.bubble-bot li {
+    margin-bottom: 0.2rem;
+}
+.bubble-bot hr {
+    border: none;
+    border-top: 1px solid #D1D5DB;
+    margin: 0.85rem 0;
+}
+
+/* ---- Source chips ---- */
+.source-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+.source-chip {
+    display: inline-block;
+    background: #EFF6FF;
+    color: #1D4ED8;
+    border: 1px solid #BFDBFE;
+    border-radius: 20px;
+    padding: 0.3rem 0.85rem;
+    font-size: 0.82rem;
+    text-decoration: none;
+    transition: background 0.15s;
+}
+.source-chip:hover {
+    background: #DBEAFE;
+    text-decoration: none;
+    color: #1E40AF;
+}
+
+/* ---- Mesa de ayuda card ---- */
+.help-desk-card {
+    background: #FEF3C7;
+    border: 1px solid #FDE68A;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    margin-top: 0.75rem;
+}
+.help-desk-card h4 {
+    color: #92400E;
+    margin: 0 0 0.5rem 0;
+    font-size: 0.95rem;
+}
+.help-desk-card p, .help-desk-card a {
+    font-size: 0.88rem;
+    color: #78350F;
+    margin: 0.15rem 0;
+}
+.help-desk-card a {
+    color: #B45309;
+    text-decoration: underline;
+}
+
+/* ---- No results card ---- */
+.no-results-card {
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    margin: 0.75rem 0;
+}
+.no-results-card h4 {
+    color: #991B1B;
+    margin: 0 0 0.5rem 0;
+}
+.no-results-card p, .no-results-card li {
+    font-size: 0.9rem;
+    color: #7F1D1D;
+}
+
+/* ---- Diagnostico ---- */
+.diag-label {
+    font-size: 0.8rem;
+    color: #6B7280;
+    margin-top: 0.25rem;
+}
+</style>
+"""
 
 # ---------------------------------------------------------------------------
 # Cargar indice (cacheado por Streamlit)
@@ -118,14 +276,12 @@ def detect_intent(query):
 # ---------------------------------------------------------------------------
 
 def _clean_fragment(text):
-    """Limpia un fragmento: quita saltos excesivos y espacios multiples."""
     text = re.sub(r"\n{2,}", "\n", text)
     text = re.sub(r"[ \t]+", " ", text)
     return text.strip()
 
 
 def _deduplicate_sentences(fragments):
-    """Fusiona fragmentos eliminando oraciones repetidas o muy similares."""
     seen = set()
     unique_lines = []
     for frag in fragments:
@@ -134,10 +290,9 @@ def _deduplicate_sentences(fragments):
             line = line.strip()
             if not line:
                 continue
-            # Normalizar para comparar: minusculas, sin puntuacion extra
             key = re.sub(r"[^\w\s]", "", line.lower()).strip()
             if len(key) < 15:
-                continue  # lineas muy cortas no aportan
+                continue
             if key not in seen:
                 seen.add(key)
                 unique_lines.append(line)
@@ -145,31 +300,26 @@ def _deduplicate_sentences(fragments):
 
 
 def _summarize_lines(lines, max_lines=12):
-    """Toma las lineas mas relevantes, sin exceder el maximo."""
     return lines[:max_lines]
 
 # ---------------------------------------------------------------------------
-# Construccion de respuesta con formato obligatorio
+# Construccion de respuesta (markdown para dentro de la burbuja)
 # ---------------------------------------------------------------------------
 
-def build_response(query, results):
-    """Genera la respuesta completa en markdown siguiendo el formato obligatorio."""
+def build_response_md(query, results):
+    """Genera markdown de la respuesta (sin fuentes ni mesa de ayuda, esos se renderizan aparte)."""
     intent = detect_intent(query)
-
-    # Fusionar y deduplicar fragmentos
     all_fragments = [r["text"] for r in results]
     unique_lines = _deduplicate_sentences(all_fragments)
     summarized = _summarize_lines(unique_lines)
-
-    # Titulos de articulos encontrados (para contexto)
     titles = list(dict.fromkeys(r["title"] for r in results))
 
     parts = []
 
-    # --- Titulo ---
+    # Titulo
     parts.append(f"### {query.strip().rstrip('?')}?\n")
 
-    # --- Explicacion general ---
+    # Explicacion
     if intent == "how":
         parts.append(
             f"En la documentacion de Connectif encontre informacion relevante "
@@ -196,120 +346,146 @@ def build_response(query, results):
         parts.append("")
     else:
         parts.append(
-            f"Encontre informacion relevante sobre tu consulta "
-            f"en la documentacion de Connectif."
+            "Encontre informacion relevante sobre tu consulta "
+            "en la documentacion de Connectif."
         )
-        if len(titles) > 0:
+        if titles:
             parts.append(
                 f"Los articulos mas relacionados son: **{titles[0]}**"
                 + (f" y *{titles[1]}*." if len(titles) > 1 else ".")
             )
         parts.append("")
 
-    # --- Pasos / Contenido principal ---
+    # Contenido principal
     if intent == "how" and summarized:
         parts.append("#### Pasos para hacerlo:\n")
         for i, line in enumerate(summarized[:8], 1):
             parts.append(f"{i}. {line}")
         parts.append("")
-
     elif intent == "what" and summarized:
         for line in summarized[:6]:
             parts.append(f"- {line}")
         parts.append("")
-
     elif intent == "error" and summarized:
         parts.append("#### Checklist de diagnostico:\n")
         for line in summarized[:8]:
             parts.append(f"- [ ] {line}")
         parts.append("")
-
     else:
         for line in summarized[:8]:
             parts.append(f"- {line}")
         parts.append("")
 
-    # --- Que debes tener en cuenta ---
+    # Que tener en cuenta
     if len(summarized) > 8:
         parts.append("#### Que debes tener en cuenta:\n")
         for line in summarized[8:12]:
             parts.append(f"- {line}")
         parts.append("")
 
-    # --- Checklist rapido (solo para "how") ---
-    if intent == "how" and len(titles) > 0:
+    # Checklist rapido (solo how)
+    if intent == "how" and titles:
         parts.append("#### Checklist rapido:\n")
-        checks = [f"- [ ] Revisa el articulo: {t}" for t in titles[:3]]
-        if intent == "how":
-            checks.append("- [ ] Verifica que los cambios se guardaron correctamente")
-            checks.append("- [ ] Prueba el resultado en tu cuenta de Connectif")
-        for c in checks:
-            parts.append(c)
+        for t in titles[:3]:
+            parts.append(f"- [ ] Revisa el articulo: {t}")
+        parts.append("- [ ] Verifica que los cambios se guardaron correctamente")
+        parts.append("- [ ] Prueba el resultado en tu cuenta de Connectif")
         parts.append("")
 
-    # --- Fuentes (obligatorio) ---
-    parts.append("---\n")
-    parts.append("### Fuentes\n")
-    seen_urls = set()
-    for r in results[:5]:
-        if r["url"] not in seen_urls:
-            seen_urls.add(r["url"])
-            parts.append(f"- [{r['title']}]({r['url']})")
-    parts.append("")
-
-    # --- Mesa de ayuda (si la evidencia es debil) ---
-    best_score = results[0]["score"] if results else 0
-    if best_score < 0.25 or intent == "error":
-        parts.append(_mesa_de_ayuda_block())
-
     return "\n".join(parts)
 
-
-def _mesa_de_ayuda_block():
-    """Genera el bloque de mesa de ayuda en markdown."""
-    lines = [
-        "---\n",
-        "### Mesa de ayuda\n",
-        "Si necesitas mas ayuda, puedes contactar al equipo de soporte de Connectif:\n",
-    ]
-    if HELP_EMAIL:
-        lines.append(f"- Email: **{HELP_EMAIL}**")
-    if HELP_WHATSAPP:
-        lines.append(f"- WhatsApp: **{HELP_WHATSAPP}**")
-    lines.append(f"- [Enviar solicitud al soporte de Connectif]({HELP_FORM})")
-    return "\n".join(lines)
-
 # ---------------------------------------------------------------------------
-# Respuesta cuando no hay resultados
+# Renderizado HTML
 # ---------------------------------------------------------------------------
 
-def build_no_results_response(query):
-    parts = []
-    parts.append(f"### {query.strip().rstrip('?')}?\n")
-    parts.append(
-        "**No encontre esta informacion en la documentacion oficial de Connectif.**\n"
+def _html_escape(text):
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def render_user_bubble(query):
+    st.markdown(
+        f'<div class="bubble-user">{_html_escape(query)}</div>',
+        unsafe_allow_html=True,
     )
-    parts.append("Intenta reformular tu pregunta:\n")
-    parts.append("- Usa palabras clave especificas (ej: *workflow*, *segmento*, *email*)")
-    parts.append("- Describe la accion que quieres realizar (ej: *como crear...*, *como configurar...*)")
-    parts.append("- Menciona la seccion de Connectif (ej: *editor de email*, *cupones*, *integracion*)")
-    parts.append("")
-    parts.append(_mesa_de_ayuda_block())
-    return "\n".join(parts)
+
+
+def render_bot_bubble(md_content):
+    st.markdown(
+        f'<div class="bubble-bot">\n\n{md_content}\n\n</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_source_chips(results):
+    chips_html = '<div class="source-chips">'
+    seen = set()
+    for r in results[:5]:
+        if r["url"] not in seen:
+            seen.add(r["url"])
+            title_esc = _html_escape(r["title"])
+            chips_html += (
+                f'<a class="source-chip" href="{r["url"]}" target="_blank">'
+                f'{title_esc}</a>'
+            )
+    chips_html += "</div>"
+    st.markdown(chips_html, unsafe_allow_html=True)
+
+
+def render_help_desk():
+    lines = []
+    if HELP_EMAIL:
+        lines.append(f"<p>Email: <strong>{_html_escape(HELP_EMAIL)}</strong></p>")
+    if HELP_WHATSAPP:
+        lines.append(f"<p>WhatsApp: <strong>{_html_escape(HELP_WHATSAPP)}</strong></p>")
+    lines.append(
+        f'<p><a href="{HELP_FORM}" target="_blank">'
+        f"Enviar solicitud al soporte de Connectif</a></p>"
+    )
+    body = "\n".join(lines)
+    st.markdown(
+        f'<div class="help-desk-card">'
+        f"<h4>Mesa de ayuda</h4>"
+        f"<p>Si necesitas mas ayuda, contacta al equipo de soporte:</p>"
+        f"{body}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_no_results(query):
+    st.markdown(
+        f'<div class="no-results-card">'
+        f"<h4>No encontre esta informacion en la documentacion oficial de Connectif.</h4>"
+        f"<p>Intenta reformular tu pregunta:</p>"
+        f"<ul>"
+        f"<li>Usa palabras clave especificas (workflow, segmento, email)</li>"
+        f"<li>Describe la accion que quieres realizar (como crear..., como configurar...)</li>"
+        f"<li>Menciona la seccion de Connectif (editor de email, cupones, integracion)</li>"
+        f"</ul></div>",
+        unsafe_allow_html=True,
+    )
 
 # ---------------------------------------------------------------------------
-# UI
+# UI principal
 # ---------------------------------------------------------------------------
 
 def main():
     st.set_page_config(
-        page_title="Asistente Connectif (Docs)",
+        page_title="Guia inteligente de Connectif",
         page_icon=":blue_book:",
         layout="centered",
     )
 
-    st.title("Asistente Connectif (Docs)")
-    st.caption("Busca en la documentacion oficial de Connectif")
+    # CSS global
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+    # Header
+    st.markdown(
+        '<div class="app-header">'
+        "<h1>Guia inteligente de Connectif</h1>"
+        "<p>Consulta la documentacion oficial de Connectif de forma rapida y clara.</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     # Cargar indice
     try:
@@ -321,45 +497,68 @@ def main():
         )
         return
 
-    # Toggle diagnostico
+    # Controles: toggle diagnostico
     diag = st.toggle("Modo diagnostico", value=False)
 
-    # Formulario de pregunta
+    # Card de pregunta
+    st.markdown('<div class="question-card">', unsafe_allow_html=True)
     with st.form("ask", clear_on_submit=False):
         query = st.text_input(
             "Escribe tu pregunta:",
             placeholder="Ej: Como crear un workflow de carrito abandonado?",
+            label_visibility="collapsed",
         )
-        submitted = st.form_submit_button("Preguntar")
+        submitted = st.form_submit_button("Preguntar", use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if not submitted or not query.strip():
         return
 
     query = query.strip()
 
+    # Burbuja del usuario
+    render_user_bubble(query)
+
     # Buscar
     results = search(query, vectorizer, tfidf_matrix, chunks)
 
     if results:
-        # Respuesta principal formateada
-        response_md = build_response(query, results)
-        st.markdown(response_md)
+        # Burbuja del bot con respuesta formateada
+        response_md = build_response_md(query, results)
+        render_bot_bubble(response_md)
 
-        # Boton copiar respuesta
+        # Fuentes como chips
+        st.markdown(
+            '<p style="font-size:0.85rem;color:#374151;margin-top:0.75rem;">'
+            "<strong>Fuentes:</strong></p>",
+            unsafe_allow_html=True,
+        )
+        render_source_chips(results)
+
+        # Mesa de ayuda si evidencia debil o error
+        best_score = results[0]["score"] if results else 0
+        intent = detect_intent(query)
+        if best_score < 0.25 or intent == "error":
+            render_help_desk()
+
+        # Copiar respuesta
         with st.expander("Copiar respuesta"):
             st.code(response_md, language="markdown")
 
         # Diagnostico
         if diag:
-            st.markdown("---")
-            st.markdown("**Modo diagnostico — Fragments / Scores:**")
+            st.markdown(
+                '<p class="diag-label"><strong>Modo diagnostico — Fragments / Scores:</strong></p>',
+                unsafe_allow_html=True,
+            )
             for r in results:
                 st.markdown(f"- `{r['score']:.4f}` — **{r['title']}**")
                 with st.expander(f"Fragment: {r['title'][:50]}"):
                     st.text(r["text"])
     else:
-        response_md = build_no_results_response(query)
-        st.markdown(response_md)
+        render_user_bubble(query)
+        render_no_results(query)
+        render_help_desk()
 
 
 if __name__ == "__main__":
