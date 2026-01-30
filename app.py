@@ -494,6 +494,44 @@ def render_no_results(query):
 # UI principal
 # ---------------------------------------------------------------------------
 
+def _run_search_and_render(query, vectorizer, tfidf_matrix, chunks, diag):
+    """Ejecuta la busqueda y renderiza la respuesta completa."""
+    render_user_bubble(query)
+    results = search(query, vectorizer, tfidf_matrix, chunks)
+
+    if results:
+        response_md = build_response_md(query, results)
+        render_bot_bubble(response_md)
+
+        st.markdown(
+            '<p style="font-size:0.85rem;color:#374151;margin-top:0.75rem;">'
+            "<strong>Fuentes:</strong></p>",
+            unsafe_allow_html=True,
+        )
+        render_source_chips(results)
+
+        best_score = results[0]["score"] if results else 0
+        intent = detect_intent(query)
+        if best_score < 0.25 or intent == "error":
+            render_help_desk()
+
+        with st.expander("Copiar respuesta"):
+            st.code(response_md, language="markdown")
+
+        if diag:
+            st.markdown(
+                '<p class="diag-label"><strong>Modo diagnostico — Fragments / Scores:</strong></p>',
+                unsafe_allow_html=True,
+            )
+            for r in results:
+                st.markdown(f"- `{r['score']:.4f}` — **{r['title']}**")
+                with st.expander(f"Fragment: {r['title'][:50]}"):
+                    st.text(r["text"])
+    else:
+        render_no_results(query)
+        render_help_desk()
+
+
 def main():
     st.set_page_config(
         page_title="Guia inteligente de Connectif",
@@ -512,7 +550,7 @@ def main():
     st.markdown(
         '<div class="app-header">'
         "<h1>Guia inteligente de Connectif</h1>"
-        "<p>Consulta la documentacion oficial de Connectif de forma rapida y clara.</p>"
+        "<p>Asistente de consulta con IA, basado en la documentacion oficial de Connectif.</p>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -527,88 +565,46 @@ def main():
         )
         return
 
-    # Controles: toggle diagnostico
+    # Toggle diagnostico
     diag = st.toggle("Modo diagnostico", value=False)
 
-    # Card de pregunta
-    st.markdown('<div class="question-card">', unsafe_allow_html=True)
+    # Formulario de pregunta manual
     with st.form("ask", clear_on_submit=False):
         query = st.text_input(
             "Escribe tu pregunta:",
-            value=st.session_state.faq_query,
             placeholder="Ej: Como crear un workflow de carrito abandonado?",
             label_visibility="collapsed",
         )
         submitted = st.form_submit_button("Preguntar", use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- Preguntas frecuentes ---
+    # Preguntas frecuentes
     st.markdown(
         '<p class="faq-title">Preguntas frecuentes</p>',
         unsafe_allow_html=True,
     )
-    # Dos columnas
     faq_left = FAQ_QUESTIONS[: (len(FAQ_QUESTIONS) + 1) // 2]
     faq_right = FAQ_QUESTIONS[(len(FAQ_QUESTIONS) + 1) // 2:]
     col1, col2 = st.columns(2)
+    faq_clicked = ""
     for q in faq_left:
         if col1.button(q, key=f"faq_{q}", use_container_width=True):
-            st.session_state.faq_query = q
+            faq_clicked = q
     for q in faq_right:
         if col2.button(q, key=f"faq_{q}", use_container_width=True):
-            st.session_state.faq_query = q
+            faq_clicked = q
 
-    # Limpiar faq_query despues de usarla para evitar persistencia
-    if st.session_state.faq_query:
-        st.session_state.faq_query = ""
+    # Determinar query activa: FAQ click > form submit
+    active_query = ""
+    if faq_clicked:
+        active_query = faq_clicked
+    elif submitted and query.strip():
+        active_query = query.strip()
 
-    if not submitted or not query.strip():
+    if not active_query:
         return
 
-    query = query.strip()
-
-    # Burbuja del usuario
-    render_user_bubble(query)
-
-    # Buscar
-    results = search(query, vectorizer, tfidf_matrix, chunks)
-
-    if results:
-        # Burbuja del bot con respuesta formateada
-        response_md = build_response_md(query, results)
-        render_bot_bubble(response_md)
-
-        # Fuentes como chips
-        st.markdown(
-            '<p style="font-size:0.85rem;color:#374151;margin-top:0.75rem;">'
-            "<strong>Fuentes:</strong></p>",
-            unsafe_allow_html=True,
-        )
-        render_source_chips(results)
-
-        # Mesa de ayuda si evidencia debil o error
-        best_score = results[0]["score"] if results else 0
-        intent = detect_intent(query)
-        if best_score < 0.25 or intent == "error":
-            render_help_desk()
-
-        # Copiar respuesta
-        with st.expander("Copiar respuesta"):
-            st.code(response_md, language="markdown")
-
-        # Diagnostico
-        if diag:
-            st.markdown(
-                '<p class="diag-label"><strong>Modo diagnostico — Fragments / Scores:</strong></p>',
-                unsafe_allow_html=True,
-            )
-            for r in results:
-                st.markdown(f"- `{r['score']:.4f}` — **{r['title']}**")
-                with st.expander(f"Fragment: {r['title'][:50]}"):
-                    st.text(r["text"])
-    else:
-        render_no_results(query)
-        render_help_desk()
+    # Ejecutar busqueda y mostrar respuesta
+    _run_search_and_render(active_query, vectorizer, tfidf_matrix, chunks, diag)
 
 
 if __name__ == "__main__":
