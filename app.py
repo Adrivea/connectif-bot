@@ -124,6 +124,8 @@ header {visibility: hidden;}
     max-width: 900px;
     margin: 0 auto;
     padding: 2rem 1.5rem;
+    box-sizing: border-box;
+    width: 100%;
 }
 
 /* Forzar max-width en el contenedor de Streamlit */
@@ -131,6 +133,7 @@ header {visibility: hidden;}
     max-width: 900px !important;
     padding-left: 2rem !important;
     padding-right: 2rem !important;
+    box-sizing: border-box !important;
 }
 
 /* Asegurar que el contenido esté centrado */
@@ -338,6 +341,8 @@ section[data-testid="stSidebar"] {
     max-width: 900px;
     margin: 1.5rem auto;
     padding: 0 1.5rem;
+    box-sizing: border-box;
+    width: 100%;
 }
 
 .sources-section h4 {
@@ -349,7 +354,7 @@ section[data-testid="stSidebar"] {
 
 .source-card {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
@@ -358,6 +363,9 @@ section[data-testid="stSidebar"] {
     text-decoration: none;
     color: #1f2937;
     transition: all 0.2s;
+    max-width: 100%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .source-card:hover {
@@ -373,6 +381,13 @@ section[data-testid="stSidebar"] {
     margin-right: 1rem;
     flex-shrink: 0;
     opacity: 0.7;
+    margin-top: 0.125rem;
+}
+
+.source-card > div {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .source-card .source-title {
@@ -380,6 +395,10 @@ section[data-testid="stSidebar"] {
     font-weight: 600;
     color: #1e293b;
     line-height: 1.4;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    margin: 0;
 }
 
 .source-card .source-url {
@@ -389,6 +408,7 @@ section[data-testid="stSidebar"] {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    word-break: break-all;
 }
 
 /* Footer de contacto */
