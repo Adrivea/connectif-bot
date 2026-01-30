@@ -102,11 +102,6 @@ CUSTOM_CSS = """
     color: #374151;
     margin-bottom: 0.5rem;
 }
-.diag-label {
-    font-size: 0.8rem;
-    color: #6B7280;
-    margin-top: 0.25rem;
-}
 </style>
 """
 
@@ -247,16 +242,16 @@ def _limpiar_texto(text):
 
 
 def _formatear_respuesta(query, results):
-    """Construye el markdown de la respuesta ordenada."""
+    """Construye el markdown con el texto exacto del chunk principal."""
     principal = results[0]
-    texto = _limpiar_texto(principal["text"])
+    texto = principal["text"].strip()
 
     parts = []
 
     # Titulo
     parts.append(f"*{query.strip()}*\n")
 
-    # Contenido principal
+    # Contenido exacto del chunk
     if texto:
         parts.append(texto)
     else:
@@ -282,8 +277,8 @@ def _html_escape(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _mostrar_respuesta(query, vectorizer, tfidf_matrix, chunks, diag):
-    """Flujo completo: buscar -> mostrar ordenado o decir que no esta."""
+def _mostrar_respuesta(query, vectorizer, tfidf_matrix, chunks):
+    """Flujo completo: buscar -> mostrar texto del chunk -> o decir que no esta."""
     # Bubble del usuario
     st.markdown(
         f'<div class="bubble-user">{_html_escape(query)}</div>',
@@ -313,17 +308,6 @@ def _mostrar_respuesta(query, vectorizer, tfidf_matrix, chunks, diag):
         unsafe_allow_html=True,
     )
 
-    # Diagnostico (solo si esta activado)
-    if diag:
-        st.markdown(
-            '<p class="diag-label"><strong>Diagnostico:</strong></p>',
-            unsafe_allow_html=True,
-        )
-        for r in results:
-            st.markdown(f"- `{r['score']:.4f}` — **{r['title']}**")
-            with st.expander(f"{r['title'][:60]}"):
-                st.text(r["text"][:800])
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -350,8 +334,6 @@ def main():
     except FileNotFoundError:
         st.error("No se encontro el indice. Ejecuta: python ingest.py && python build_index.py")
         return
-
-    diag = st.toggle("Modo diagnostico", value=False)
 
     with st.form("ask", clear_on_submit=False):
         query = st.text_input(
@@ -382,7 +364,7 @@ def main():
     if not active_query:
         return
 
-    _mostrar_respuesta(active_query, vectorizer, tfidf_matrix, chunks, diag)
+    _mostrar_respuesta(active_query, vectorizer, tfidf_matrix, chunks)
 
 
 if __name__ == "__main__":
