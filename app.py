@@ -145,21 +145,25 @@ section[data-testid="stSidebar"] {
     background-color: #ffffff;
 }
 
-/* Header premium con logo, título y subtítulo */
+/* Header premium con logo en esquina superior derecha */
 .app-header {
+    position: relative;
     text-align: center;
     padding: 2.5rem 0 2rem 0;
     margin-bottom: 2rem;
 }
 
 .app-header .logo-container {
-    margin-bottom: 1.5rem;
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 10;
 }
 
 .app-header .logo-container img {
-    max-height: 80px;
+    max-height: 60px;
     width: auto;
-    margin: 0 auto;
+    display: block;
 }
 
 .app-header h1 {
@@ -178,23 +182,14 @@ section[data-testid="stSidebar"] {
     line-height: 1.6;
 }
 
-/* Card central para input */
-.input-card {
-    background: #ffffff;
-    border-radius: 16px;
-    padding: 2rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    margin-bottom: 2rem;
-    border: 1px solid rgba(226, 232, 240, 0.8);
-}
-
-/* Input principal elegante */
+/* Input principal elegante (sin card) */
 .stTextInput > div > div > input {
     font-size: 1rem;
     padding: 0.875rem 1.25rem;
     border-radius: 12px;
     border: 2px solid #e2e8f0;
     transition: all 0.2s;
+    margin-bottom: 1rem;
 }
 
 .stTextInput > div > div > input:focus {
@@ -222,15 +217,21 @@ section[data-testid="stSidebar"] {
     transform: translateY(-1px);
 }
 
-/* Sección FAQ con chips/botones en grid */
+/* Sección FAQ con chips/botones en grid - Azul claro */
 .faq-section {
-    margin: 2rem 0;
+    max-width: 900px;
+    margin: 2rem auto;
+    padding: 1.5rem;
+    background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+    border: 1px solid #7dd3fc;
+    border-radius: 12px;
+    box-sizing: border-box;
 }
 
 .faq-title {
     font-size: 1.1rem;
     font-weight: 600;
-    color: #1e293b;
+    color: #0c4a6e;
     margin-bottom: 1rem;
     text-align: center;
 }
@@ -956,6 +957,32 @@ def _mostrar_respuesta(query, vectorizer, tfidf_matrix, chunks, show_diagnostic=
         '</div>'
     )
     st.markdown(footer_html, unsafe_allow_html=True)
+    
+    # Sección FAQ con chips en grid (después de las fuentes, en azul claro)
+    _mostrar_faq()
+
+# ---------------------------------------------------------------------------
+# Mostrar FAQ
+# ---------------------------------------------------------------------------
+
+def _mostrar_faq():
+    """Muestra la sección de preguntas frecuentes en azul claro."""
+    st.markdown('<div class="faq-section">', unsafe_allow_html=True)
+    st.markdown('<p class="faq-title">Preguntas frecuentes</p>', unsafe_allow_html=True)
+    
+    # Crear grid de FAQ usando columnas
+    num_cols = 3
+    cols = st.columns(num_cols)
+    
+    for idx, question in enumerate(FAQ_QUESTIONS):
+        col_idx = idx % num_cols
+        with cols[col_idx]:
+            if st.button(question, key=f"faq_{idx}", use_container_width=True):
+                # Al hacer clic: copiar pregunta al input y disparar búsqueda automáticamente
+                st.session_state.faq_clicked = question
+                st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Helper para logo
@@ -1008,10 +1035,7 @@ def main():
     if "faq_clicked" not in st.session_state:
         st.session_state.faq_clicked = None
 
-    # Card central para input
-    st.markdown('<div class="input-card">', unsafe_allow_html=True)
-    
-    # Formulario de pregunta
+    # Formulario de pregunta (sin card blanco)
     with st.form("ask", clear_on_submit=False):
         # Si hay una pregunta del FAQ, usarla como valor inicial
         initial_value = st.session_state.faq_clicked if st.session_state.faq_clicked else ""
@@ -1025,26 +1049,6 @@ def main():
         )
         
         submitted = st.form_submit_button("Preguntar", use_container_width=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    # Sección FAQ con chips en grid
-    st.markdown('<div class="faq-section">', unsafe_allow_html=True)
-    st.markdown('<p class="faq-title">Preguntas frecuentes</p>', unsafe_allow_html=True)
-    
-    # Crear grid de FAQ usando columnas
-    num_cols = 3
-    cols = st.columns(num_cols)
-    
-    for idx, question in enumerate(FAQ_QUESTIONS):
-        col_idx = idx % num_cols
-        with cols[col_idx]:
-            if st.button(question, key=f"faq_{idx}", use_container_width=True):
-                # Al hacer clic: copiar pregunta al input y disparar búsqueda automáticamente
-                st.session_state.faq_clicked = question
-                st.rerun()
-    
-    st.markdown('</div>', unsafe_allow_html=True)
 
     # Modo diagnóstico (opcional, solo aparece si está activado)
     show_diagnostic = st.sidebar.checkbox("Modo diagnóstico", value=False, help="Muestra información técnica sobre la búsqueda")
