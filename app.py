@@ -1,13 +1,15 @@
 """
 app.py — Guia inteligente de Connectif
 
-Flujo: Pregunta -> buscar en docs -> si hay texto mostrarlo ordenado -> si no decir que no esta -> FIN
+Flujo: Pregunta -> buscar en docs (RAG) -> GPT redacta respuesta humana -> mostrar
 """
 
+import hashlib
 import os
 import re
 
 import joblib
+import openai
 import streamlit as st
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -18,9 +20,33 @@ from sklearn.metrics.pairwise import cosine_similarity
 INDEX_DIR = os.path.join(os.path.dirname(__file__), "data", "index")
 SCORE_THRESHOLD = 0.1
 MAX_RESULTS = 5
+MAX_CHUNK_CHARS = 1200
+
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 HELP_EMAIL = os.environ.get("HELP_EMAIL", "")
 HELP_WHATSAPP = os.environ.get("HELP_WHATSAPP", "")
+
+# ---------------------------------------------------------------------------
+# System prompt para GPT
+# ---------------------------------------------------------------------------
+
+SYSTEM_PROMPT = """
+Eres "Guia Inteligente de Connectif", un asistente de soporte que responde en espanol.
+Respondes UNICAMENTE usando el CONTEXTO que te entrega el sistema (fragmentos de documentacion).
+
+REGLAS:
+1) NO inventes. Si algo no esta en el contexto, dilo.
+2) Responde con una explicacion clara y util. No digas "consulta la guia" como respuesta.
+3) Una sola respuesta, sin duplicar contenido.
+4) Tono humano, claro, paciente. Explica como si la persona no fuera tecnica.
+5) Formato Markdown:
+   - Titulo en cursiva: *pregunta del usuario*
+   - **Respuesta:** 2-4 lineas explicando.
+   - **Pasos:** (solo si aplica) lista numerada con acciones concretas.
+   - **Fuentes:** 1-5 links reales del contexto. No inventes URLs.
+6) No mezcles plataformas distintas (Shopify, Tiendanube, etc.) salvo que se pregunte comparativo.
+""".strip()
 
 # ---------------------------------------------------------------------------
 # CSS
@@ -241,24 +267,53 @@ def _limpiar_texto(text):
     return "\n".join(lines).strip()
 
 
-def _formatear_respuesta(query, results):
-    """Construye el markdown con el texto del chunk limpio y legible."""
+def _generar_respuesta_gpt(query, results):
+    """Envia chunks como contexto a GPT y devuelve respuesta en lenguaje humano."""
+    # Construir contexto con los chunks
+    context_parts = []
+    for i, r in enumerate(results[:MAX_RESULTS], 1):
+        text = r["text"][:MAX_CHUNK_CHARS]
+        context_parts.append(
+            f"--- Fuente {i}: {r['title']} ---\n"
+            f"URL: {r['url']}\n"
+            f"{text}"
+        )
+    context = "\n\n".join(context_parts)
+
+    sources = "\n".join(
+        f"- [{r['title']}]({r['url']})" for r in results[:5]
+    )
+
+    user_msg = (
+        f"CONTEXTO (fragmentos de documentacion):\n\n{context}\n\n"
+        f"FUENTES DISPONIBLES:\n{sources}\n\n"
+        f"PREGUNTA DEL USUARIO:\n{query}"
+    )
+
+    client = openai.OpenAI(api_key=OPENAI_API_KEY)
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        max_tokens=1500,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_msg},
+        ],
+    )
+    return response.choices[0].message.content
+
+
+def _fallback_respuesta(query, results):
+    """Respuesta sin LLM: muestra texto limpio del chunk."""
     principal = results[0]
     texto = _limpiar_texto(principal["text"])
 
     parts = []
-
-    # Titulo
     parts.append(f"*{query.strip()}*\n")
-
-    # Contenido exacto del chunk
     if texto:
         parts.append(texto)
     else:
         parts.append(f"La documentacion tiene informacion en: *{principal['title']}*")
     parts.append("")
-
-    # Fuentes (1-5)
     parts.append("**Fuentes:**\n")
     seen = set()
     for r in results[:5]:
@@ -266,7 +321,6 @@ def _formatear_respuesta(query, results):
             seen.add(r["url"])
             parts.append(f"- [{r['title']}]({r['url']})")
     parts.append("")
-
     return "\n".join(parts)
 
 # ---------------------------------------------------------------------------
@@ -278,17 +332,17 @@ def _html_escape(text):
 
 
 def _mostrar_respuesta(query, vectorizer, tfidf_matrix, chunks):
-    """Flujo completo: buscar -> mostrar texto del chunk -> o decir que no esta."""
+    """Flujo: buscar (RAG) -> GPT redacta respuesta -> mostrar."""
     # Bubble del usuario
     st.markdown(
         f'<div class="bubble-user">{_html_escape(query)}</div>',
         unsafe_allow_html=True,
     )
 
-    # Buscar
+    # Buscar en docs
     results = buscar(query, vectorizer, tfidf_matrix, chunks)
 
-    # Si NO hay texto -> decir que no esta en la doc
+    # Si NO hay resultados
     if not results:
         st.markdown(
             '<div class="no-results-card">'
@@ -301,8 +355,23 @@ def _mostrar_respuesta(query, vectorizer, tfidf_matrix, chunks):
         )
         return
 
-    # Si hay texto -> mostrarlo ordenado
-    md = _formatear_respuesta(query, results)
+    # Generar respuesta humana con GPT (o fallback si no hay API key)
+    cache_key = "r_" + hashlib.md5(query.strip().lower().encode()).hexdigest()
+    if cache_key in st.session_state:
+        md = st.session_state[cache_key]
+    else:
+        if OPENAI_API_KEY:
+            try:
+                with st.spinner("Generando respuesta..."):
+                    md = _generar_respuesta_gpt(query, results)
+            except Exception as e:
+                st.warning(f"Error con OpenAI: {e}. Mostrando texto directo.")
+                md = _fallback_respuesta(query, results)
+        else:
+            md = _fallback_respuesta(query, results)
+        st.session_state[cache_key] = md
+
+    # Mostrar UNA sola vez
     st.markdown(
         f'<div class="bubble-bot">\n\n{md}\n\n</div>',
         unsafe_allow_html=True,
