@@ -115,7 +115,7 @@ antes que una respuesta completa pero inventada.
 CUSTOM_CSS = """
 <style>
 .block-container {
-    max-width: 760px !important;
+    max-width: 960px !important;
     padding-top: 2rem !important;
 }
 .app-header {
@@ -144,35 +144,66 @@ CUSTOM_CSS = """
     font-size: 0.95rem;
     line-height: 1.5;
 }
-.bubble-bot {
-    background: #F3F4F6;
-    color: #111827;
+.response-container {
+    max-width: 900px;
+    margin: 1rem auto;
+    background: #FFFFFF;
     border: 1px solid #E5E7EB;
-    border-radius: 18px 18px 18px 4px;
-    padding: 1rem 1.25rem;
-    margin: 0.75rem 0;
-    max-width: 95%;
-    font-size: 0.93rem;
-    line-height: 1.65;
+    border-radius: 14px;
+    padding: 2rem 2.5rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    color: #1F2937;
+    font-size: 0.95rem;
+    line-height: 1.75;
+    text-align: justify;
 }
-.bubble-bot h3, .bubble-bot h4 {
-    margin-top: 0.75rem;
-    margin-bottom: 0.25rem;
-    color: #111827;
+.response-container h2 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #1E3A5F;
+    margin: 0 0 1.2rem 0;
+    padding-bottom: 0.6rem;
+    border-bottom: 2px solid #2563EB;
+    text-align: left;
 }
-.bubble-bot ul, .bubble-bot ol {
-    padding-left: 1.25rem;
-    margin: 0.35rem 0;
+.response-container h4 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1E3A5F;
+    margin: 1.5rem 0 0.5rem 0;
+    text-align: left;
 }
-.bubble-bot li {
-    margin-bottom: 0.2rem;
+.response-container p {
+    margin: 0.5rem 0;
+    text-align: justify;
+}
+.response-container ul, .response-container ol {
+    padding-left: 1.5rem;
+    margin: 0.5rem 0;
+}
+.response-container li {
+    margin-bottom: 0.4rem;
+    text-align: left;
+}
+.response-container a {
+    color: #2563EB;
+    text-decoration: none;
+}
+.response-container a:hover {
+    text-decoration: underline;
+}
+.response-container .section-divider {
+    border: none;
+    border-top: 1px solid #E5E7EB;
+    margin: 1.2rem 0;
 }
 .no-results-card {
+    max-width: 900px;
+    margin: 1rem auto;
     background: #FEF2F2;
     border: 1px solid #FECACA;
     border-radius: 12px;
     padding: 1rem 1.25rem;
-    margin: 0.75rem 0;
 }
 .no-results-card h4 {
     color: #991B1B;
@@ -391,6 +422,108 @@ def _html_escape(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _process_inline(text):
+    """Convierte markdown inline (bold, links) a HTML."""
+    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(
+        r'\[([^\]]+)\]\(([^)]+)\)',
+        r'<a href="\2" target="_blank">\1</a>',
+        text,
+    )
+    return text
+
+
+def _md_to_html(md_text):
+    """Convierte markdown basico de la respuesta GPT a HTML estructurado."""
+    lines = md_text.split("\n")
+    html_parts = []
+    in_ul = False
+    in_ol = False
+    para_buf = []
+
+    def flush_para():
+        nonlocal para_buf
+        if para_buf:
+            html_parts.append(f'<p>{" ".join(para_buf)}</p>')
+            para_buf = []
+
+    def close_lists():
+        nonlocal in_ul, in_ol
+        if in_ul:
+            html_parts.append("</ul>")
+            in_ul = False
+        if in_ol:
+            html_parts.append("</ol>")
+            in_ol = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Linea vacia
+        if not stripped:
+            flush_para()
+            close_lists()
+            continue
+
+        # Encabezados
+        if stripped.startswith("#### "):
+            flush_para()
+            close_lists()
+            html_parts.append(f'<h4>{_process_inline(stripped[5:])}</h4>')
+            continue
+        if stripped.startswith("### "):
+            flush_para()
+            close_lists()
+            html_parts.append(f'<h4>{_process_inline(stripped[4:])}</h4>')
+            continue
+        if stripped.startswith("## "):
+            flush_para()
+            close_lists()
+            html_parts.append('<hr class="section-divider">')
+            html_parts.append(f'<h4>{_process_inline(stripped[3:])}</h4>')
+            continue
+        if stripped.startswith("# "):
+            flush_para()
+            close_lists()
+            html_parts.append(f'<h4>{_process_inline(stripped[2:])}</h4>')
+            continue
+
+        # Lista desordenada (- o * o checklist)
+        m_ul = re.match(r'^[-*]\s+(.+)', stripped)
+        m_check = re.match(r'^[\u2610\u2611\u2612\u2713\u2714\u2716]\s*\d*\.?\s*(.+)', stripped)
+        if m_ul or m_check:
+            flush_para()
+            if in_ol:
+                html_parts.append("</ol>")
+                in_ol = False
+            if not in_ul:
+                html_parts.append("<ul>")
+                in_ul = True
+            content = m_ul.group(1) if m_ul else m_check.group(1)
+            html_parts.append(f'<li>{_process_inline(content)}</li>')
+            continue
+
+        # Lista ordenada (1. 2. etc.)
+        m_ol = re.match(r'^(\d+)\.\s+(.+)', stripped)
+        if m_ol:
+            flush_para()
+            if in_ul:
+                html_parts.append("</ul>")
+                in_ul = False
+            if not in_ol:
+                html_parts.append("<ol>")
+                in_ol = True
+            html_parts.append(f'<li>{_process_inline(m_ol.group(2))}</li>')
+            continue
+
+        # Texto normal -> parrafo
+        para_buf.append(_process_inline(stripped))
+
+    flush_para()
+    close_lists()
+    return "\n".join(html_parts)
+
+
 def _mostrar_respuesta(query, vectorizer, tfidf_matrix, chunks):
     """Flujo: buscar (RAG) -> GPT redacta respuesta -> mostrar."""
     # Bubble del usuario
@@ -431,11 +564,15 @@ def _mostrar_respuesta(query, vectorizer, tfidf_matrix, chunks):
             md = _fallback_respuesta(query, results)
         st.session_state[cache_key] = md
 
-    # Mostrar UNA sola vez
-    st.markdown(
-        f'<div class="bubble-bot">\n\n{md}\n\n</div>',
-        unsafe_allow_html=True,
+    # Convertir markdown a HTML y renderizar en contenedor profesional
+    body_html = _md_to_html(md)
+    full_html = (
+        '<div class="response-container">'
+        f'<h2>{_html_escape(query)}</h2>'
+        f'{body_html}'
+        '</div>'
     )
+    st.markdown(full_html, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Main
