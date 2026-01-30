@@ -242,9 +242,9 @@ def _limpiar_texto(text):
 
 
 def _formatear_respuesta(query, results):
-    """Construye el markdown con el texto exacto del chunk principal."""
+    """Construye el markdown con el texto del chunk limpio y legible."""
     principal = results[0]
-    texto = principal["text"].strip()
+    texto = _limpiar_texto(principal["text"])
 
     parts = []
 
