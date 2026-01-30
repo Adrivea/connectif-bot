@@ -298,111 +298,156 @@ def detect_intent(query):
     return "general"
 
 # ---------------------------------------------------------------------------
-# Limpieza y fusion de fragmentos
+# Limpieza y normalizacion de texto
 # ---------------------------------------------------------------------------
 
-def _clean_fragment(text):
-    text = re.sub(r"\n{2,}", "\n", text)
+# Palabras que indican que la linea siguiente es continuacion de la anterior
+_CONTINUATION = re.compile(r"^(en|y|de|para|con|que|a|al|del|la|el|los|las|un|una|o)\b", re.I)
+
+# Patrones que indican pasos REALES en la documentacion
+_REAL_STEP = re.compile(r"^\s*(\d+)\.\s+(.+)$")
+_NAMED_STEP = re.compile(r"^\s*(Paso|PASO|Step)\s+\d+[.:]\s*(.+)$", re.I)
+
+
+def _normalize_text(text):
+    """Normaliza texto: une lineas partidas, quita espacios repetidos."""
     text = re.sub(r"[ \t]+", " ", text)
-    return text.strip()
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    # Unir lineas partidas: si la linea no termina en punto/signo y la
+    # siguiente empieza con palabra de continuacion o minuscula
+    raw_lines = text.split("\n")
+    merged = []
+    for line in raw_lines:
+        stripped = line.strip()
+        if not stripped:
+            merged.append("")
+            continue
+        if (merged
+                and merged[-1]
+                and not merged[-1].endswith((".", ":", "!", "?", ";"))
+                and (_CONTINUATION.match(stripped) or stripped[0].islower())):
+            merged[-1] = merged[-1] + " " + stripped
+        else:
+            merged.append(stripped)
+
+    return "\n".join(merged)
 
 
-def _deduplicate_sentences(fragments):
+def _extract_clean_text(fragment):
+    """Limpia y normaliza un fragmento de texto."""
+    text = _normalize_text(fragment)
+    # Deduplicar oraciones y filtrar lineas rotas/muy cortas
     seen = set()
-    unique_lines = []
-    for frag in fragments:
-        clean = _clean_fragment(frag)
-        for line in clean.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            key = re.sub(r"[^\w\s]", "", line.lower()).strip()
-            if len(key) < 15:
-                continue
-            if key not in seen:
-                seen.add(key)
-                unique_lines.append(line)
-    return unique_lines
+    unique = []
+    for line in text.split("\n"):
+        line = line.strip()
+        if not line:
+            if unique and unique[-1] != "":
+                unique.append("")
+            continue
+        # Descartar lineas muy cortas o que parecen fragmentos rotos
+        if len(line) < 20:
+            continue
+        # Descartar lineas que empiezan con coma, punto y coma, o parentesis suelto
+        if line[0] in (",", ";", ")"):
+            continue
+        key = re.sub(r"[^\w\s]", "", line.lower()).strip()
+        if len(key) < 15:
+            continue
+        if key not in seen:
+            seen.add(key)
+            unique.append(line)
+    return unique
 
 
-def _summarize_lines(lines, max_lines=12):
-    return lines[:max_lines]
+def _has_real_steps(lines):
+    """Detecta si el texto contiene pasos reales (numerados correctamente)."""
+    step_count = 0
+    for line in lines:
+        if _REAL_STEP.match(line) or _NAMED_STEP.match(line):
+            step_count += 1
+    return step_count >= 2
+
+
+def _extract_steps_and_prose(lines):
+    """Separa lineas de pasos reales del resto (prosa)."""
+    steps = []
+    prose = []
+    for line in lines:
+        m = _REAL_STEP.match(line)
+        m2 = _NAMED_STEP.match(line)
+        if m:
+            steps.append(m.group(2).strip())
+        elif m2:
+            steps.append(m2.group(2).strip())
+        else:
+            prose.append(line)
+    return steps, prose
 
 # ---------------------------------------------------------------------------
-# Construccion de respuesta (markdown para dentro de la burbuja)
+# Construccion de respuesta
 # ---------------------------------------------------------------------------
 
 def build_response_md(query, results):
-    """Genera markdown limpio con secciones: Resumen, Pasos, Checklist, Relacionado.
-
-    - Usa solo el articulo principal para los pasos.
-    - Articulos secundarios se listan en "Relacionado".
-    - No duplica contenido.
-    """
-    intent = detect_intent(query)
-
-    # Separar articulo principal vs relacionados
+    """Genera markdown con tono humano, parrafos, pasos solo si existen reales."""
     main_result = results[0]
     related = results[1:]
 
-    # Deduplicar lineas del articulo principal
-    main_lines = _deduplicate_sentences([main_result["text"]])
-    main_lines = _summarize_lines(main_lines, max_lines=10)
+    # Limpiar texto principal
+    main_lines = _extract_clean_text(main_result["text"])
+    has_steps = _has_real_steps(main_lines)
 
     parts = []
 
-    # --- Resumen ---
-    parts.append("#### Resumen\n")
-    if intent == "how":
-        parts.append(
-            f"En la documentacion de Connectif, el articulo "
-            f"**{main_result['title']}** explica como realizar este proceso."
-        )
-    elif intent == "what":
-        parts.append(
-            f"Segun la documentacion oficial, este tema se cubre en "
-            f"**{main_result['title']}**."
-        )
-    elif intent == "error":
-        parts.append(
-            "Encontre informacion que puede ayudarte a diagnosticar este problema "
-            f"en el articulo **{main_result['title']}**."
-        )
-    else:
-        parts.append(
-            f"Encontre informacion relevante en el articulo "
-            f"**{main_result['title']}**."
-        )
+    # --- Titulo en italica ---
+    clean_q = query.strip().rstrip("?")
+    parts.append(f"*{clean_q}?*\n")
+
+    # --- Explicacion humana ---
+    parts.append(
+        f"Segun la documentacion de Connectif, el articulo "
+        f"**{main_result['title']}** cubre este tema."
+    )
+    if related:
+        extras = ", ".join(f"*{r['title']}*" for r in related[:2])
+        parts.append(f"Tambien encontre informacion relevante en: {extras}.")
     parts.append("")
 
-    # --- Pasos / Contenido principal ---
-    if intent == "how":
-        parts.append("#### Pasos\n")
-        for i, line in enumerate(main_lines[:8], 1):
-            parts.append(f"{i}. {line}")
-        parts.append("")
-    elif intent == "error":
-        parts.append("#### Checklist de diagnostico\n")
-        for line in main_lines[:8]:
-            parts.append(f"- {line}")
-        parts.append("")
+    if has_steps:
+        steps, prose = _extract_steps_and_prose(main_lines)
+
+        # Contexto en prosa (max 3 lineas, solo las que son oraciones completas)
+        prose_clean = [p for p in prose if p and len(p) > 30][:3]
+        if prose_clean:
+            for p in prose_clean:
+                parts.append(p)
+            parts.append("")
+
+        # Pasos reales numerados
+        if steps:
+            parts.append("**Pasos:**\n")
+            for i, step in enumerate(steps[:10], 1):
+                parts.append(f"{i}. {step}")
+            parts.append("")
     else:
-        for line in main_lines[:8]:
-            parts.append(f"- {line}")
-        parts.append("")
+        # Sin pasos: contenido como parrafos fluidos
+        content_lines = [l for l in main_lines if l and len(l) > 30][:8]
+        if content_lines:
+            # Primeras lineas como parrafo, resto como bullets
+            first_para = " ".join(content_lines[:2])
+            parts.append(first_para)
+            parts.append("")
+            if len(content_lines) > 2:
+                for line in content_lines[2:]:
+                    parts.append(f"- {line}")
+                parts.append("")
 
-    # --- Que tener en cuenta ---
-    if len(main_lines) > 8:
-        parts.append("#### Que debes tener en cuenta\n")
-        for line in main_lines[8:]:
-            parts.append(f"- {line}")
-        parts.append("")
-
-    # --- Relacionado (articulos secundarios, NO mezclados con pasos) ---
+    # --- Relacionado ---
     if related:
-        parts.append("#### Relacionado\n")
-        for r in related[:4]:
-            parts.append(f"- **{r['title']}**: {r['url']}")
+        parts.append("**Relacionado:**\n")
+        for r in related[:3]:
+            parts.append(f"- [{r['title']}]({r['url']})")
         parts.append("")
 
     return "\n".join(parts)
