@@ -523,25 +523,81 @@ def _clean_chunk_for_display(text):
     return result
 
 
-def _extract_notes(lines):
-    """Extrae lineas que parecen advertencias, requisitos o notas importantes."""
-    _NOTE_KEYWORDS = re.compile(
-        r"\b(nota|importante|requisito|advertencia|atencion|limite|permiso|"
-        r"compatib|ten en cuenta|recuerda|asegurate|necesitas tener)\b", re.I
+def _extract_intro_sentences(text, max_sentences=4):
+    """Extrae las primeras oraciones utiles como resumen introductorio."""
+    # Separar en oraciones (punto + espacio + mayuscula)
+    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z\xc1\xc9\xcd\xd3\xda\xd1])", text)
+    intro = []
+    skip_patterns = re.compile(
+        r"^(En este art[ií]culo|Tiempo de implementaci|Dificultad:|"
+        r"Objetivo:|Cu[aá]ndo utilizarlo|Sigue aprendiendo|"
+        r"Te han quedado dudas|Recuerda que tienes|"
+        r"Esta estrategia forma parte|Para implementarla)", re.I
     )
-    notes = []
+    # Parar si encontramos un paso numerado o cabecera de seccion
+    step_start = re.compile(r"^(\d+\.\s|PASO\s|Paso\s|Step\s|Instalaci[oó]n\s|Configuraci[oó]n\s)", re.I)
+    for s in sentences:
+        s = s.strip()
+        if not s or len(s) < 25:
+            continue
+        if skip_patterns.match(s):
+            continue
+        # Si encontramos inicio de pasos, parar la intro
+        if step_start.match(s):
+            break
+        # Filtrar fragmentos que terminan cortados (sin punto final)
+        if len(s) > 50 and not s.endswith((".", "!", "?", ":", ")")):
+            # Intentar cortar en el ultimo punto
+            last_dot = s.rfind(".")
+            if last_dot > 30:
+                s = s[:last_dot + 1]
+            else:
+                continue
+        intro.append(s)
+        if len(intro) >= max_sentences:
+            break
+    return " ".join(intro) if intro else ""
+
+
+def _extract_action_steps(lines):
+    """Extrae pasos como acciones concretas, no titulos de seccion."""
+    _SECTION_HEADER = re.compile(
+        r"^(Nodo\s|Configuraci[oó]n\s|Instalaci[oó]n\s|Funcionamiento|"
+        r"Primer\s|Segundo\s|Tercer\s|Rama\s|PASO\s+\d)", re.I
+    )
+    steps = []
     for line in lines:
-        if _NOTE_KEYWORDS.search(line) and len(line) > 20:
-            notes.append(line)
-    return notes
+        m = _REAL_STEP.match(line)
+        m2 = _NAMED_STEP.match(line)
+        if m:
+            step_text = m.group(2).strip()
+        elif m2:
+            step_text = m2.group(2).strip()
+        else:
+            continue
+        # Filtrar lineas cortas (titulos, no acciones)
+        if len(step_text) < 20:
+            continue
+        # Filtrar cabeceras de seccion
+        if _SECTION_HEADER.match(step_text):
+            continue
+        # Filtrar si termina cortado (sin punto ni signo de cierre)
+        if not step_text.endswith((".", "!", "?", ":", ")", "\"")):
+            last_dot = step_text.rfind(".")
+            if last_dot > 20:
+                step_text = step_text[:last_dot + 1]
+            elif len(step_text) < 30:
+                continue
+        steps.append(step_text)
+    return steps
 
 
 def build_response_md(query, results):
-    """Genera markdown siguiendo la estructura del system prompt."""
+    """Genera respuesta sintetizada: no pega chunks, sino que extrae y estructura."""
     main_result = results[0]
     related = results[1:]
 
-    # Texto principal limpio
+    # Limpiar texto del articulo principal
     main_text = _clean_chunk_for_display(main_result["text"])
     main_lines = [l for l in main_text.split("\n") if l.strip()]
     has_steps = _has_real_steps(main_lines)
@@ -549,69 +605,31 @@ def build_response_md(query, results):
     parts = []
 
     # --- 1) Titulo en cursiva ---
-    clean_q = query.strip().rstrip("?")
-    parts.append(f"*{clean_q}?*\n")
+    parts.append(f"*{query.strip()}*\n")
 
-    # --- 2) Respuesta: explicacion principal en 2-5 lineas ---
-    parts.append("**Respuesta**\n")
-    if has_steps:
-        steps, prose = _extract_steps_and_prose(main_lines)
-        # Usar la prosa como explicacion
-        if prose:
-            for p in prose[:5]:
-                parts.append(p)
-        else:
-            parts.append(
-                f"Segun la documentacion de Connectif, el articulo "
-                f"**{main_result['title']}** cubre este tema."
-            )
+    # --- 2) Respuesta: sintesis de las primeras oraciones ---
+    parts.append("**Respuesta:**\n")
+    intro = _extract_intro_sentences(main_text)
+    if intro:
+        parts.append(intro)
     else:
-        # Sin pasos: mostrar el contenido como explicacion
-        if main_text:
-            # Limitar a lineas sustanciales para la seccion "Respuesta"
-            display_lines = [l for l in main_lines if len(l) > 20]
-            for line in display_lines[:8]:
-                parts.append(line)
-        else:
-            parts.append(
-                f"Segun la documentacion de Connectif, el articulo "
-                f"**{main_result['title']}** cubre este tema."
-            )
+        parts.append(
+            f"Connectif cuenta con una guia sobre este tema en el articulo "
+            f"*{main_result['title']}*."
+        )
     parts.append("")
 
-    # --- 3) Como hacerlo (SOLO si hay pasos reales) ---
+    # --- 3) Como se hace (SOLO si hay pasos reales) ---
     if has_steps:
-        steps, _ = _extract_steps_and_prose(main_lines)
+        steps = _extract_action_steps(main_lines)
         if steps:
-            parts.append("**Como hacerlo**\n")
-            for i, step in enumerate(steps[:15], 1):
+            parts.append("**Como se hace:**\n")
+            for i, step in enumerate(steps[:10], 1):
                 parts.append(f"{i}. {step}")
             parts.append("")
 
-    # --- 4) Notas importantes (SOLO si aplica) ---
-    notes = _extract_notes(main_lines)
-    if notes:
-        parts.append("**Notas importantes**\n")
-        for note in notes[:5]:
-            parts.append(f"- {note}")
-        parts.append("")
-
-    # --- Contenido adicional de articulos secundarios ---
-    if related:
-        shown_extra = False
-        for r in related[:2]:
-            extra_text = _clean_chunk_for_display(r["text"])
-            if extra_text and len(extra_text) > 100:
-                if not shown_extra:
-                    parts.append("---\n")
-                    shown_extra = True
-                parts.append(f"**{r['title']}:**\n")
-                extra_lines = [l for l in extra_text.split("\n") if l.strip()]
-                parts.append("\n".join(extra_lines[:8]))
-                parts.append("")
-
-    # --- 5) Fuentes (1-5 links) ---
-    parts.append("**Fuentes**\n")
+    # --- 4) Fuentes (1-5 links, sin duplicar) ---
+    parts.append("**Fuentes:**\n")
     seen_urls = set()
     all_results = [main_result] + related[:4]
     for r in all_results:
