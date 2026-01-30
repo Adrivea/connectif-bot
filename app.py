@@ -424,54 +424,67 @@ def build_response_md(query, results):
 # Formateo visual de respuesta
 # ---------------------------------------------------------------------------
 
-_RE_MAIN_STEP = re.compile(r"^(\d+)\.\s+(.+)$")
-_RE_SUB_STEP = re.compile(r"^(\d+\.\d+)\.?\s+(.+)$")
+_RE_SUB_STEP = re.compile(r"^\s*(\d+\.\d+)\.?\s+(.+)$")
+_RE_MAIN_STEP = re.compile(r"^\s*(\d+)\.\s+(.+)$")
+_RE_BULLET = re.compile(r"^\s*[-*\u2022]\s+(.+)$")
+_RE_CHECKBOX = re.compile(r"^\s*-\s*\[\s*\]\s+(.+)$")
 _RE_HEADING = re.compile(
     r"^(#{1,4}\s+)?(Pasos para hacerlo|Checklist de diagnostico|Checklist rapido"
     r"|Que debes tener en cuenta|Requisitos|Notas|Importante):?\s*$",
     re.I,
 )
-_RE_CHECKBOX = re.compile(r"^- \[ \]\s+(.+)$")
+
+# Longitud maxima para considerar una linea como "item de lista".
+# Lineas mas largas que empiecen con "1." probablemente son parrafos
+# donde el numero es incidental — se dejan como texto normal.
+_MAX_STEP_LEN = 200
 
 
 def format_answer(text):
     """Transforma el markdown de la respuesta para mejorar el formato visual.
 
-    - "1. texto" -> checkmark emoji
-    - "1.1 texto" -> sub-bullet emoji
-    - Encabezados de seccion -> negrita
-    - "- [ ] texto" -> checkmark emoji
+    Reglas:
+    - Solo convierte lineas que empiezan con numeracion/vineta real.
+    - No toca parrafos largos aunque contengan "1." al inicio.
+    - Cada item se emite como linea markdown separada con salto explicito.
+    - Sub-items (1.1, 1.2) se indentan como sublista.
     """
     output = []
-    for line in text.split("\n"):
+    for line in text.splitlines():
         stripped = line.strip()
 
-        # Sub-paso (1.1, 1.2, ...)
-        m_sub = _RE_SUB_STEP.match(stripped)
-        if m_sub:
-            output.append(f"  🔸 {m_sub.group(2)}")
-            continue
-
-        # Paso principal (1., 2., ...)
-        m_main = _RE_MAIN_STEP.match(stripped)
-        if m_main:
-            output.append(f"✅ {m_main.group(2)}")
-            continue
-
-        # Checkbox (- [ ] texto)
-        m_check = _RE_CHECKBOX.match(stripped)
-        if m_check:
-            output.append(f"✅ {m_check.group(1)}")
+        # Linea vacia: preservar salto
+        if not stripped:
+            output.append("")
             continue
 
         # Encabezado de seccion
         m_heading = _RE_HEADING.match(stripped)
         if m_heading:
-            title = m_heading.group(2)
-            output.append(f"\n**{title}:**")
+            output.append("")
+            output.append(f"**{m_heading.group(2)}:**")
+            output.append("")
             continue
 
-        # Linea normal
+        # Checkbox (- [ ] texto)
+        m_check = _RE_CHECKBOX.match(stripped)
+        if m_check:
+            output.append(f"- ✅ {m_check.group(1)}")
+            continue
+
+        # Sub-paso (1.1, 1.2, ...) — comprobar antes que paso principal
+        m_sub = _RE_SUB_STEP.match(stripped)
+        if m_sub and len(m_sub.group(2)) < _MAX_STEP_LEN:
+            output.append(f"  - 🔸 {m_sub.group(2)}")
+            continue
+
+        # Paso principal (1., 2., ...)
+        m_main = _RE_MAIN_STEP.match(stripped)
+        if m_main and len(m_main.group(2)) < _MAX_STEP_LEN:
+            output.append(f"- ✅ {m_main.group(2)}")
+            continue
+
+        # Linea normal — no tocar
         output.append(line)
 
     return "\n".join(output)
