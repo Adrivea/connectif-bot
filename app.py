@@ -25,7 +25,10 @@ MAX_CHUNK_CHARS = 1200
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 HELP_EMAIL = os.environ.get("HELP_EMAIL", "")
-HELP_WHATSAPP = os.environ.get("HELP_WHATSAPP", "")
+
+# Ruta del logo (opcional, puede no existir)
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
+SHOW_LOGO = os.path.exists(LOGO_PATH)
 
 # ---------------------------------------------------------------------------
 # System prompt para GPT
@@ -60,7 +63,7 @@ ESTRUCTURA OBLIGATORIA DE RESPUESTA
 
 Tu respuesta DEBE seguir EXACTAMENTE esta estructura:
 
-1. Explicacion basada en los documentos
+1. (SIN TITULO de seccion, empieza directamente con la explicacion)
 Explica en lenguaje humano, claro y comprensible.
 Resume lo que realmente dicen los documentos.
 Usa parrafos cortos.
@@ -80,12 +83,7 @@ Usa este formato EXACTO con casillas de verificacion:
 Si los documentos no permiten construir un checklist completo, indica:
 "Los documentos no contienen informacion suficiente para definir un checklist completo de acciones."
 
-3. Fuentes documentales
-Incluye SIEMPRE un apartado de fuentes.
-Formato obligatorio:
-Fuentes:
-- [Titulo del articulo](URL real)
-Si hay multiples documentos, enumeralos.
+IMPORTANTE: NO incluyas seccion de fuentes ni enlaces a documentos. Las fuentes se muestran automaticamente por el sistema.
 
 MANEJO DE INCERTIDUMBRE (MUY IMPORTANTE)
 Si la pregunta del usuario excede lo que dicen los documentos:
@@ -105,138 +103,366 @@ antes que una respuesta completa pero inventada.
 """.strip()
 
 # ---------------------------------------------------------------------------
-# CSS
+# CSS Premium - Estilo guía premium
 # ---------------------------------------------------------------------------
 
-CUSTOM_CSS = """
+PREMIUM_CSS = """
 <style>
-.block-container {
-    max-width: 960px !important;
-    padding-top: 2rem !important;
+/* Ocultar elementos por defecto de Streamlit */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+
+/* Fondo suave y elegante */
+.stApp {
+    background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
 }
+
+/* Contenedor principal centrado con max-width 900px */
+.main-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+}
+
+/* Header premium con logo, título y subtítulo */
 .app-header {
     text-align: center;
-    padding: 1.5rem 0 0.5rem 0;
+    padding: 2.5rem 0 2rem 0;
+    margin-bottom: 2rem;
 }
+
+.app-header .logo-container {
+    margin-bottom: 1.5rem;
+}
+
+.app-header .logo-container img {
+    max-height: 80px;
+    width: auto;
+    margin: 0 auto;
+}
+
 .app-header h1 {
-    font-size: 1.75rem;
+    font-size: 2.25rem;
     font-weight: 700;
-    color: #111827;
-    margin-bottom: 0.25rem;
+    color: #1a202c;
+    margin: 0 0 0.5rem 0;
+    letter-spacing: -0.02em;
 }
+
 .app-header p {
-    font-size: 0.95rem;
-    color: #6B7280;
+    font-size: 1.1rem;
+    color: #64748b;
     margin: 0;
-}
-.bubble-user {
-    background: #2563EB;
-    color: #FFFFFF;
-    border-radius: 18px 18px 4px 18px;
-    padding: 0.75rem 1.15rem;
-    margin: 0.75rem 0;
-    max-width: 80%;
-    margin-left: auto;
-    font-size: 0.95rem;
-    line-height: 1.5;
-}
-.response-container {
-    max-width: 900px;
-    margin: 1rem auto;
-    background: #FFFFFF;
-    border: 1px solid #E5E7EB;
-    border-radius: 14px;
-    padding: 2rem 2.5rem;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-    color: #1F2937;
-    font-size: 0.95rem;
-    line-height: 1.75;
-    text-align: justify;
-}
-.response-container h2 {
-    font-size: 1.35rem;
-    font-weight: 700;
-    color: #1E3A5F;
-    margin: 0 0 1.2rem 0;
-    padding-bottom: 0.6rem;
-    border-bottom: 2px solid #2563EB;
-    text-align: left;
-}
-.response-container h4 {
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: #1E3A5F;
-    margin: 1.5rem 0 0.5rem 0;
-    text-align: left;
-}
-.response-container p {
-    margin: 0.5rem 0;
-    text-align: justify;
-}
-.response-container ul, .response-container ol {
-    padding-left: 1.5rem;
-    margin: 0.5rem 0;
-}
-.response-container li {
-    margin-bottom: 0.4rem;
-    text-align: left;
-}
-.response-container a {
-    color: #2563EB;
-    text-decoration: none;
-}
-.response-container a:hover {
-    text-decoration: underline;
-}
-.response-container .section-divider {
-    border: none;
-    border-top: 1px solid #E5E7EB;
-    margin: 1.2rem 0;
-}
-.contact-footer {
-    max-width: 900px;
-    margin: 0.75rem auto 1.5rem auto;
-    background: #EFF6FF;
-    border: 1px solid #BFDBFE;
-    border-radius: 10px;
-    padding: 1rem 1.5rem;
-    font-size: 0.9rem;
-    color: #1E3A5F;
-    text-align: center;
+    font-weight: 400;
     line-height: 1.6;
 }
-.contact-footer strong {
-    color: #1E3A5F;
+
+/* Card central para input */
+.input-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    margin-bottom: 2rem;
+    border: 1px solid rgba(226, 232, 240, 0.8);
 }
+
+/* Input principal elegante */
+.stTextInput > div > div > input {
+    font-size: 1rem;
+    padding: 0.875rem 1.25rem;
+    border-radius: 12px;
+    border: 2px solid #e2e8f0;
+    transition: all 0.2s;
+}
+
+.stTextInput > div > div > input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Botón llamativo */
+.stButton > button {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white;
+    font-weight: 600;
+    font-size: 1rem;
+    padding: 0.875rem 2rem;
+    border-radius: 12px;
+    border: none;
+    transition: all 0.2s;
+    box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
+    width: 100%;
+}
+
+.stButton > button:hover {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    box-shadow: 0 6px 12px -1px rgba(59, 130, 246, 0.4);
+    transform: translateY(-1px);
+}
+
+/* Sección FAQ con chips/botones en grid */
+.faq-section {
+    margin: 2rem 0;
+}
+
+.faq-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 1rem;
+    text-align: center;
+}
+
+.faq-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.faq-chip {
+    background: #ffffff;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 0.875rem 1.25rem;
+    font-size: 0.95rem;
+    color: #334155;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    font-weight: 500;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.faq-chip:hover {
+    border-color: #3b82f6;
+    background: #eff6ff;
+    color: #1e40af;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(59, 130, 246, 0.15);
+}
+
+/* Card de respuesta premium */
+.response-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 2.5rem;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    margin: 2rem 0;
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.response-card h2 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #1a202c;
+    margin: 0 0 1.5rem 0;
+    padding-bottom: 1rem;
+    border-bottom: 3px solid #3b82f6;
+    line-height: 1.3;
+}
+
+.response-card h4 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 2rem 0 0.75rem 0;
+    line-height: 1.4;
+}
+
+.response-card p {
+    font-size: 1rem;
+    line-height: 1.8;
+    color: #334155;
+    margin: 0.75rem 0;
+    text-align: justify;
+}
+
+.response-card ul, .response-card ol {
+    padding-left: 1.75rem;
+    margin: 1rem 0;
+}
+
+.response-card li {
+    font-size: 1rem;
+    line-height: 1.8;
+    color: #334155;
+    margin-bottom: 0.5rem;
+    text-align: left;
+}
+
+.response-card a {
+    color: #3b82f6;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.response-card a:hover {
+    text-decoration: underline;
+}
+
+/* Checklist estilizado */
+.response-card ul[style*="list-style:none"] {
+    padding-left: 0;
+}
+
+.response-card ul[style*="list-style:none"] li {
+    padding-left: 1.5rem;
+    position: relative;
+}
+
+/* Sección de fuentes elegante */
+.sources-section {
+    max-width: 900px;
+    margin: 1.5rem auto;
+    padding: 0 1.5rem;
+}
+
+.sources-section h4 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 1rem 0;
+}
+
+.source-card {
+    display: flex;
+    align-items: center;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.75rem;
+    text-decoration: none;
+    color: #1f2937;
+    transition: all 0.2s;
+}
+
+.source-card:hover {
+    border-color: #3b82f6;
+    background: #eff6ff;
+    box-shadow: 0 4px 8px rgba(59, 130, 246, 0.1);
+    text-decoration: none;
+    transform: translateX(4px);
+}
+
+.source-card .source-icon {
+    font-size: 1.5rem;
+    margin-right: 1rem;
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+
+.source-card .source-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #1e293b;
+    line-height: 1.4;
+}
+
+.source-card .source-url {
+    font-size: 0.85rem;
+    color: #64748b;
+    margin-top: 0.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Footer de contacto */
+.contact-footer {
+    max-width: 900px;
+    margin: 1.5rem auto;
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 1px solid #bfdbfe;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    font-size: 0.95rem;
+    color: #1e3a5f;
+    text-align: center;
+    line-height: 1.7;
+}
+
 .contact-footer a {
-    color: #2563EB;
+    color: #2563eb;
     text-decoration: none;
     font-weight: 600;
 }
+
 .contact-footer a:hover {
     text-decoration: underline;
 }
+
+/* Card de no resultados */
 .no-results-card {
     max-width: 900px;
-    margin: 1rem auto;
-    background: #FEF2F2;
-    border: 1px solid #FECACA;
+    margin: 2rem auto;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
     border-radius: 12px;
-    padding: 1rem 1.25rem;
+    padding: 1.5rem;
+    text-align: center;
 }
+
 .no-results-card h4 {
-    color: #991B1B;
-    margin: 0 0 0.5rem 0;
+    color: #991b1b;
+    margin: 0 0 0.75rem 0;
+    font-size: 1.2rem;
 }
-.no-results-card p, .no-results-card li {
-    font-size: 0.9rem;
-    color: #7F1D1D;
+
+.no-results-card p {
+    font-size: 1rem;
+    color: #7f1d1d;
+    line-height: 1.6;
 }
-.faq-title {
-    font-size: 0.95rem;
+
+/* Modo diagnóstico (solo visible si está activado) */
+.diagnostic-section {
+    max-width: 900px;
+    margin: 1.5rem auto;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1.5rem;
+}
+
+.diagnostic-section h4 {
+    font-size: 1.1rem;
     font-weight: 600;
-    color: #374151;
+    color: #1e293b;
+    margin: 0 0 1rem 0;
+}
+
+.diagnostic-item {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
     margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    color: #475569;
+}
+
+.diagnostic-item strong {
+    color: #1e293b;
+}
+
+/* Separador de secciones */
+.section-divider {
+    border: none;
+    border-top: 1px solid #e2e8f0;
+    margin: 1.5rem 0;
+}
+
+/* Ajustes de espaciado general */
+.stMarkdown {
+    margin-bottom: 0;
 }
 </style>
 """
@@ -270,7 +496,7 @@ def load_index():
     return vectorizer, tfidf_matrix, chunks
 
 # ---------------------------------------------------------------------------
-# Busqueda
+# Busqueda (MOTOR RAG - NO TOCAR)
 # ---------------------------------------------------------------------------
 
 def _merge_article_chunks(texts):
@@ -434,7 +660,7 @@ def _fallback_respuesta(query, results):
     return "\n".join(parts)
 
 # ---------------------------------------------------------------------------
-# Renderizado
+# Renderizado de respuesta premium
 # ---------------------------------------------------------------------------
 
 def _html_escape(text):
@@ -559,14 +785,8 @@ def _md_to_html(md_text):
     return "\n".join(html_parts)
 
 
-def _mostrar_respuesta(query, vectorizer, tfidf_matrix, chunks):
+def _mostrar_respuesta(query, vectorizer, tfidf_matrix, chunks, show_diagnostic=False):
     """Flujo: buscar (RAG) -> GPT redacta respuesta -> mostrar."""
-    # Bubble del usuario
-    st.markdown(
-        f'<div class="bubble-user">{_html_escape(query)}</div>',
-        unsafe_allow_html=True,
-    )
-
     # Buscar en docs
     results = buscar(query, vectorizer, tfidf_matrix, chunks)
 
@@ -582,6 +802,21 @@ def _mostrar_respuesta(query, vectorizer, tfidf_matrix, chunks):
             unsafe_allow_html=True,
         )
         return
+
+    # Modo diagnóstico (solo si está activado y hay datos)
+    if show_diagnostic and results:
+        diagnostic_html = '<div class="diagnostic-section"><h4>Modo Diagnóstico</h4>'
+        diagnostic_html += f'<div class="diagnostic-item"><strong>Resultados encontrados:</strong> {len(results)}</div>'
+        for i, r in enumerate(results[:3], 1):
+            diagnostic_html += (
+                f'<div class="diagnostic-item">'
+                f'<strong>Fuente {i}:</strong> {_html_escape(r["title"])}<br>'
+                f'<strong>Score:</strong> {r["score"]:.3f}<br>'
+                f'<strong>URL:</strong> <a href="{r["url"]}" target="_blank">{_html_escape(r["url"])}</a>'
+                f'</div>'
+            )
+        diagnostic_html += '</div>'
+        st.markdown(diagnostic_html, unsafe_allow_html=True)
 
     # Generar respuesta humana con GPT (o fallback si no hay API key)
     cache_key = "r_" + hashlib.md5(query.strip().lower().encode()).hexdigest()
@@ -599,39 +834,73 @@ def _mostrar_respuesta(query, vectorizer, tfidf_matrix, chunks):
             md = _fallback_respuesta(query, results)
         st.session_state[cache_key] = md
 
-    # Convertir markdown a HTML y renderizar en contenedor profesional
+    # Convertir markdown a HTML y renderizar en card premium
     body_html = _md_to_html(md)
     full_html = (
-        '<div class="response-container">'
+        '<div class="response-card">'
         f'<h2>{_html_escape(query)}</h2>'
         f'{body_html}'
         '</div>'
     )
     st.markdown(full_html, unsafe_allow_html=True)
 
+    # Fuentes como cajitas elegantes
+    seen_urls = set()
+    source_cards = []
+    for r in results[:5]:
+        if r["url"] in seen_urls:
+            continue
+        seen_urls.add(r["url"])
+        title_esc = _html_escape(r["title"])
+        url_short = r["url"].replace("https://", "").replace("http://", "")
+        source_cards.append(
+            f'<a class="source-card" href="{r["url"]}" target="_blank">'
+            f'<span class="source-icon">📄</span>'
+            f'<div>'
+            f'<div class="source-title">{title_esc}</div>'
+            f'<div class="source-url">{_html_escape(url_short)}</div>'
+            f'</div></a>'
+        )
+    if source_cards:
+        sources_html = (
+            '<div class="sources-section">'
+            '<h4>Documentacion consultada</h4>'
+            + "".join(source_cards)
+            + '</div>'
+        )
+        st.markdown(sources_html, unsafe_allow_html=True)
+
     # Footer de contacto
-    contact_parts = []
+    email_line = ""
     if HELP_EMAIL:
-        contact_parts.append(
-            f'<strong>Email:</strong> <a href="mailto:{HELP_EMAIL}">{HELP_EMAIL}</a>'
+        email_line = (
+            f'<br><strong>Email:</strong> '
+            f'<a href="mailto:{HELP_EMAIL}">{HELP_EMAIL}</a>'
         )
-    if HELP_WHATSAPP:
-        contact_parts.append(
-            f'<strong>WhatsApp:</strong> <a href="https://wa.me/{HELP_WHATSAPP}" target="_blank">{HELP_WHATSAPP}</a>'
-        )
-    contact_line = " &nbsp;|&nbsp; ".join(contact_parts) if contact_parts else ""
     footer_html = (
         '<div class="contact-footer">'
         'Si tienes preguntas adicionales, no dudes en contactar a nuestra '
-        '<strong>mesa de ayuda</strong>.'
+        '<a href="https://support.connectif.ai/hc/es/requests/new" target="_blank">'
+        'mesa de ayuda</a>.'
+        f'{email_line}'
+        '</div>'
     )
-    if contact_line:
-        footer_html += f'<br>{contact_line}'
-    footer_html += '</div>'
     st.markdown(footer_html, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# Main
+# Helper para logo
+# ---------------------------------------------------------------------------
+
+def _get_logo_base64():
+    """Convierte el logo a base64 para mostrarlo en HTML."""
+    import base64
+    if SHOW_LOGO and os.path.exists(LOGO_PATH):
+        with open(LOGO_PATH, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    return ""
+
+# ---------------------------------------------------------------------------
+# Main - UI Premium
 # ---------------------------------------------------------------------------
 
 def main():
@@ -641,52 +910,88 @@ def main():
         layout="centered",
     )
 
-    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+    # Inyectar CSS premium
+    st.markdown(PREMIUM_CSS, unsafe_allow_html=True)
 
-    st.markdown(
-        '<div class="app-header">'
-        "<h1>Guia inteligente de Connectif</h1>"
-        "<p>Asistente de consulta con IA, basado en la documentacion oficial de Connectif.</p>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
+    # Contenedor principal centrado
+    with st.container():
+        # Header premium con logo (si existe), título y subtítulo
+        header_html = '<div class="app-header">'
+        if SHOW_LOGO:
+            header_html += f'<div class="logo-container"><img src="data:image/png;base64,{_get_logo_base64()}" alt="Connectif Logo"></div>'
+        header_html += (
+            '<h1>Guia inteligente de Connectif</h1>'
+            '<p>Asistente de consulta con IA, basado en la documentacion oficial de Connectif.</p>'
+            '</div>'
+        )
+        st.markdown(header_html, unsafe_allow_html=True)
 
+    # Cargar índice
     try:
         vectorizer, tfidf_matrix, chunks = load_index()
     except FileNotFoundError:
         st.error("No se encontro el indice. Ejecuta: python ingest.py && python build_index.py")
         return
 
-    with st.form("ask", clear_on_submit=False):
-        query = st.text_input(
-            "Escribe tu pregunta:",
-            placeholder="Ej: Como crear un workflow de carrito abandonado?",
-            label_visibility="collapsed",
-        )
-        submitted = st.form_submit_button("Preguntar", use_container_width=True)
+    # Inicializar session_state para FAQ
+    if "faq_clicked" not in st.session_state:
+        st.session_state.faq_clicked = None
 
+    # Card central para input
+    with st.container():
+        st.markdown('<div class="input-card">', unsafe_allow_html=True)
+        
+        # Formulario de pregunta
+        with st.form("ask", clear_on_submit=False):
+            # Si hay una pregunta del FAQ, usarla como valor inicial
+            initial_value = st.session_state.faq_clicked if st.session_state.faq_clicked else ""
+            
+            query = st.text_input(
+                "Escribe tu pregunta:",
+                value=initial_value,
+                placeholder="Ej: Como crear un workflow de carrito abandonado?",
+                label_visibility="collapsed",
+                key="query_input_field"
+            )
+            
+            submitted = st.form_submit_button("Preguntar", use_container_width=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # Sección FAQ con chips en grid
+    st.markdown('<div class="faq-section">', unsafe_allow_html=True)
     st.markdown('<p class="faq-title">Preguntas frecuentes</p>', unsafe_allow_html=True)
-    faq_left = FAQ_QUESTIONS[: (len(FAQ_QUESTIONS) + 1) // 2]
-    faq_right = FAQ_QUESTIONS[(len(FAQ_QUESTIONS) + 1) // 2:]
-    col1, col2 = st.columns(2)
-    faq_clicked = ""
-    for q in faq_left:
-        if col1.button(q, key=f"faq_{q}", use_container_width=True):
-            faq_clicked = q
-    for q in faq_right:
-        if col2.button(q, key=f"faq_{q}", use_container_width=True):
-            faq_clicked = q
+    
+    # Crear grid de FAQ usando columnas
+    num_cols = 3
+    cols = st.columns(num_cols)
+    
+    for idx, question in enumerate(FAQ_QUESTIONS):
+        col_idx = idx % num_cols
+        with cols[col_idx]:
+            if st.button(question, key=f"faq_{idx}", use_container_width=True):
+                # Al hacer clic: copiar pregunta al input y disparar búsqueda automáticamente
+                st.session_state.faq_clicked = question
+                st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
+    # Modo diagnóstico (opcional, solo aparece si está activado)
+    show_diagnostic = st.sidebar.checkbox("Modo diagnóstico", value=False, help="Muestra información técnica sobre la búsqueda")
+
+    # Determinar query activa
+    # Prioridad: FAQ clickeado > formulario enviado
     active_query = ""
-    if faq_clicked:
-        active_query = faq_clicked
+    if st.session_state.faq_clicked:
+        # Si hay FAQ clickeado, usarlo directamente (búsqueda automática)
+        active_query = st.session_state.faq_clicked
+        st.session_state.faq_clicked = None  # Resetear después de usar
     elif submitted and query.strip():
         active_query = query.strip()
 
-    if not active_query:
-        return
-
-    _mostrar_respuesta(active_query, vectorizer, tfidf_matrix, chunks)
+    # Mostrar respuesta si hay query activa
+    if active_query:
+        _mostrar_respuesta(active_query, vectorizer, tfidf_matrix, chunks, show_diagnostic)
 
 
 if __name__ == "__main__":
